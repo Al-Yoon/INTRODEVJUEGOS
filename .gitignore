@@ -1,0 +1,13 @@
+# Dependencias
+node_modules/
+package-lock.json
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editores
+.vscode/
+.idea/
+*.log

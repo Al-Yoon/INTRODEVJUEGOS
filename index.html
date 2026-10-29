@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Martín Fierro: Entre el Fuego y la Pampa — RPG Táctico 3D</title>
+  <meta name="description" content="RPG táctico 3D por turnos y narrativo inspirado en Martín Fierro y Baldur's Gate 3.">
+  
+  <!-- Tipografías locales (Manus CC0, incluidas en el proyecto) -->
+  <link rel="preload" href="assets/fonts/ManusCC0-Bold.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="assets/fonts/ManusCC0-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Motor 3D Three.js local autónomo y carga de personajes GLB -->
+  <script src="three.min.js"></script>
+  <script src="OrbitControls.js"></script>
+  <script src="GLTFLoader.js"></script>
+  <script src="SkeletonUtils.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- PANTALLA PRINCIPAL / MENÚ DE INICIO -->
+    <section id="title-screen" class="view-screen active">
+      <div class="title-keyart" aria-hidden="true"></div>
+      <div class="title-shade" aria-hidden="true"></div>
+      <div class="overlay-dust"></div>
+      <div class="title-embers" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div class="title-content">
+        <div class="title-eyebrow">
+          <span class="title-rule"></span>
+          <span>Una leyenda de la frontera</span>
+        </div>
+        <div class="badge-tag">RPG TÁCTICO POR TURNOS &bull; 8 CAPÍTULOS &bull; 6 FINALES</div>
+        <h1 class="game-main-title">MARTÍN<br><span>FIERRO</span></h1>
+        <h2 class="game-sub-title">ENTRE EL FUEGO Y LA PAMPA</h2>
+        <div class="flourish-divider">
+          <span>❖</span>
+        </div>
+        <p class="slogan-quote">«En la frontera, cada decisión tiene un precio.»</p>
+
+        <div class="menu-actions">
+          <button id="btn-start-game" class="btn-gauchesco primary">
+            <span class="btn-mark">⚔</span>
+            <span class="btn-label">Nueva travesía 3D</span>
+            <span class="btn-arrow">›</span>
+          </button>
+          <button id="btn-continue-game" class="btn-gauchesco secondary hidden">
+            <span class="btn-mark">🐎</span>
+            <span class="btn-label">Continuar campaña</span>
+            <span class="btn-arrow">›</span>
+          </button>
+          <button id="btn-how-to-play" class="btn-gauchesco secondary">
+            <span class="btn-mark">📜</span>
+            <span class="btn-label">Guía y controles 3D</span>
+            <span class="btn-arrow">›</span>
+          </button>
+        </div>
+
+        <div class="title-meta">
+          <span><b>8</b> capítulos</span>
+          <span><b>6</b> finales</span>
+          <span><b>3D</b> táctico</span>
+        </div>
+
+        <div class="authors-badge">
+          <small>Concepto original: López Galarza, Domicolo &amp; Yoon &bull; Adaptación interactiva 3D 2026</small>
+        </div>
+      </div>
+      <div class="title-side-note">
+        <span>PAMPA · 1872</span>
+        <small>La frontera no perdona.<br>Pero la palabra tampoco se olvida.</small>
+      </div>
+    </section>
+
+    <!-- PANTALLA DEL JUEGO / MOTOR THREE.JS Y HUD TÁCTICO -->
+    <main id="game-view" class="view-screen">
+      <!-- Contenedor WebGL 3D -->
+      <div id="three-container"></div>
+
+      <!-- Capas de interfaz sobre el mundo 3D -->
+      <div id="unit-overlays" aria-hidden="true"></div>
+      <div id="damage-layer" aria-hidden="true"></div>
+      <div id="toast-container" aria-live="polite"></div>
+
+      <!-- Tarjeta cinematográfica de capítulo -->
+      <div id="chapter-card" class="hidden">
+        <span class="chapter-kicker" id="chapter-kicker">CAPÍTULO I</span>
+        <h2 id="chapter-card-title">La Pulpería 'La Colorada'</h2>
+        <span class="chapter-rule">❖</span>
+        <p id="chapter-card-subtitle">Donde la pampa y la ley se miran de reojo.</p>
+      </div>
+
+      <!-- Ayuda visual de cámara 3D -->
+      <div id="camera-hint">
+        <span id="camera-hint-text">🖱️ <strong>Click Izq:</strong> Mover / Acción | <strong>Click Der + Arrastrar:</strong> Orbitar Cámara 3D | <strong>Rueda:</strong> Zoom</span>
+      </div>
+
+      <!-- BARRA SUPERIOR: ESTADO DEL MUNDO Y FICHA DE GRUPO -->
+      <header id="top-hud">
+        <div class="party-roster">
+          <!-- Retrato Fierro -->
+          <div class="character-card active" id="card-fierro">
+            <div class="portrait-avatar fierro-avatar">
+              <span class="avatar-letter">MF</span>
+            </div>
+            <div class="card-info">
+              <div class="name-row">
+                <strong>Martín Fierro</strong>
+                <span class="ap-badge" id="fierro-ap-badge">4/4 AP</span>
+              </div>
+              <div class="bar-container hp-bar-wrap">
+                <div class="bar-fill hp" id="fierro-hp-fill" style="width: 100%;"></div>
+                <span class="bar-text" id="fierro-hp-text">100 / 100</span>
+              </div>
+              <div class="status-chips" id="fierro-status"></div>
+            </div>
+          </div>
+
+          <!-- Retrato Cruz (Compañero) -->
+          <div class="character-card" id="card-cruz">
+            <div class="portrait-avatar cruz-avatar">
+              <span class="avatar-letter">CR</span>
+            </div>
+            <div class="card-info">
+              <div class="name-row">
+                <strong>Sargento Cruz</strong>
+                <span class="ap-badge" id="cruz-ap-badge">4/4 AP</span>
+              </div>
+              <div class="bar-container hp-bar-wrap">
+                <div class="bar-fill hp" id="cruz-hp-fill" style="width: 100%;"></div>
+                <span class="bar-text" id="cruz-hp-text">90 / 90</span>
+              </div>
+              <div class="loyalty-row" title="Lealtad y Aprobación de Cruz">
+                <span class="loyalty-icon">🤝</span>
+                <span class="loyalty-label">Lealtad:</span>
+                <span class="loyalty-val" id="cruz-loyalty-text">Hermandad (85%)</span>
+              </div>
+              <div class="status-chips" id="cruz-status"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Misión y Fase con Indicador de Nivel -->
+        <div class="quest-tracker">
+          <div class="level-indicator-tag" id="level-indicator-text">CAPÍTULO I: LA PULPERÍA 'LA COLORADA'</div>
+          <div class="quest-badge" id="mode-badge">EXPLORACIÓN LIBRE 3D</div>
+          <div class="quest-title" id="current-quest-title">Misión: Tensión en la Pulpería</div>
+          <div class="quest-desc" id="current-quest-step">Investiga la pulpería o acércate a Don Claudio antes del arribo de la partida militar.</div>
+          <div class="objective-row">
+            <span class="objective-label">OBJETIVO</span>
+            <span id="objective-progress">Derrotar a la partida</span>
+          </div>
+        </div>
+
+        <!-- Brújula Gauchesca & Recursos -->
+        <div class="top-controls">
+          <div class="resource-pill level-pill" title="Nivel de Martín Fierro">
+            <span class="res-icon">⭐</span><span id="hero-level-badge">NIVEL 1</span>
+          </div>
+          <div class="resource-pill weather-pill" title="Clima de la frontera">
+            <span class="res-icon" id="weather-icon">☀️</span><span id="weather-label">Cielo claro</span>
+          </div>
+          <div class="compass-pill" title="Rosa de los Vientos Pampeana">
+            <span class="compass-icon">🧭</span>
+            <span id="compass-bearing">SUR</span>
+          </div>
+          <div class="resource-pill" title="Munición de Trabuco">
+            <span class="res-icon">🔫</span>
+            <span id="res-ammo">6</span>
+          </div>
+          <div class="resource-pill" title="Ginebra / Curación">
+            <span class="res-icon">🏺</span>
+            <span id="res-drink">2</span>
+          </div>
+          <div class="resource-pill" title="Vendas de campaña">
+            <span class="res-icon">🩹</span>
+            <span id="res-bandage">2</span>
+          </div>
+          <button id="btn-toggle-stats" class="btn-icon" title="Ver Atributos de Fierro">
+            <span class="res-icon">📊</span>
+          </button>
+          <button id="btn-camera-mode" class="btn-icon camera-mode-btn" title="Cambiar cámara: Táctica / 3ª persona / 1ª persona [Q]">
+            <span class="res-icon" id="camera-mode-icon">🎥</span>
+            <span id="camera-mode-label">TÁCTICA</span>
+          </button>
+          <button id="btn-reset-cam" class="btn-icon" title="Recentrar cámara [R]">
+            <span class="res-icon">🎯</span>
+          </button>
+          <button id="btn-toggle-sound" class="btn-icon" title="Sonido">
+            <span id="sound-icon">🔊</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- INDICADOR FLOTANTE DE TURNO Y COMBATE -->
+      <div id="combat-banner" class="hidden">
+        <span class="combat-tag">⚔ COMBATE TÁCTICO POR TURNOS 3D</span>
+        <span class="turn-owner" id="turn-owner-text">TURNO DE FIERRO</span>
+        <span class="round-counter" id="round-counter">RONDA 1</span>
+      </div>
+
+      <!-- Orden de iniciativa -->
+      <div id="turn-order-bar" class="hidden" aria-label="Orden de iniciativa"></div>
+
+      <!-- BARRA DE ACCIÓN TÁCTICA INFERIOR (Estilo Baldur's Gate 3) -->
+      <footer id="action-bar" class="tactical-footer">
+        <div class="action-dock">
+          <!-- Botones de Acción -->
+          <div class="abilities-group">
+            <button id="btn-act-move" class="action-btn active" title="Moverse por la cuadrícula [M]">
+              <span class="btn-shortcut">1</span>
+              <span class="action-emoji">👣</span>
+              <span class="action-name">Mover</span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+
+            <button id="btn-act-facon" class="action-btn" title="Corte de Facón [F] - Cuerpo a cuerpo con filo criollo">
+              <span class="btn-shortcut">2</span>
+              <span class="action-emoji">🗡️</span>
+              <span class="action-name">Facón <small class="weapon-rank" id="facon-upgrade-level">+0</small></span>
+              <span class="ap-cost">2 AP</span>
+            </button>
+
+            <button id="btn-act-shoot" class="action-btn" title="Disparo de Trabuco [T] - Ataque a distancia con pólvora">
+              <span class="btn-shortcut">3</span>
+              <span class="action-emoji">💥</span>
+              <span class="action-name">Trabuco <small class="weapon-rank" id="trabuco-upgrade-level">+0</small></span>
+              <span class="ap-cost">2 AP</span>
+            </button>
+
+            <button id="btn-act-poncho" class="action-btn" title="Guardia con Poncho [G] - +40% Esquiva y Reducción de Daño">
+              <span class="btn-shortcut">4</span>
+              <span class="action-emoji">🧣</span>
+              <span class="action-name">Poncho</span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+
+            <button id="btn-act-bolas" class="action-btn" title="Lanzar Boleadoras [B] - Inmoviliza al enemigo 1 turno">
+              <span class="btn-shortcut">5</span>
+              <span class="action-emoji">🪢</span>
+              <span class="action-name">Boleadoras</span>
+              <span class="ap-cost">2 AP</span>
+            </button>
+
+            <button id="btn-act-heal" class="action-btn" title="Trago de Ginebra [H] - Recupera 35 Salud">
+              <span class="btn-shortcut">6</span>
+              <span class="action-emoji">🏺</span>
+              <span class="action-name">Ginebra</span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+
+            <button id="btn-act-overwatch" class="action-btn" title="Vigilar [V] - Disparo de reacción si un enemigo se mueve en tu línea de tiro">
+              <span class="btn-shortcut">7</span>
+              <span class="action-emoji">👁️</span>
+              <span class="action-name">Vigilar</span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+
+            <button id="btn-act-payada" class="action-btn" title="Payada [P] - Marca y desmoraliza a un enemigo con tu canto">
+              <span class="btn-shortcut">8</span>
+              <span class="action-emoji">🎸</span>
+              <span class="action-name">Payada</span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+
+            <button id="btn-act-bandage" class="action-btn" title="Vendaje [C] - Cura 24 HP con tu conocimiento de la pampa (2 usos por capítulo)">
+              <span class="btn-shortcut">9</span>
+              <span class="action-emoji">🩹</span>
+              <span class="action-name">Vendaje <small class="weapon-rank" id="bandage-count">2</small></span>
+              <span class="ap-cost">1 AP</span>
+            </button>
+          </div>
+
+          <!-- Fin de Turno -->
+          <div class="turn-end-wrapper">
+            <button id="btn-end-turn" class="btn-end-turn" disabled>
+              <span>PASAR TURNO</span>
+              <small>[Espacio]</small>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tooltip Táctico Flotante (Probabilidad de Impacto & Cobertura) -->
+        <div id="target-tactical-tooltip" class="hidden">
+          <div class="target-name" id="tt-target-name">Milico Riquelme</div>
+          <div class="target-stat-row">
+            <span class="tt-label" id="tt-label-1">Prob. Impacto:</span>
+            <span class="tt-value" id="tt-hit-chance">85%</span>
+          </div>
+          <div class="target-stat-row">
+            <span class="tt-label" id="tt-label-2">Cobertura:</span>
+            <span class="tt-value cover" id="tt-cover-status">Carreta (Media -50%)</span>
+          </div>
+          <div class="target-stat-row">
+            <span class="tt-label" id="tt-label-3">Daño Estimado:</span>
+            <span class="tt-value" id="tt-damage-est">25 - 40 HP</span>
+          </div>
+        </div>
+
+        <!-- Registro de Combate y Eventos (Combat Log) -->
+        <div id="combat-log">
+          <div class="log-title">Crónica de la Frontera</div>
+          <div id="log-entries" class="log-list"></div>
+        </div>
+      </footer>
+
+      <!-- MODAL DE DIÁLOGOS NARRATIVOS CON TIRADA D20 (BG3 STYLE) -->
+      <section id="dialogue-overlay" class="hidden">
+        <div class="dialogue-card">
+          <div class="dialogue-speaker-banner">
+            <div class="speaker-avatar-frame">
+              <div id="dialogue-avatar" class="speaker-avatar"></div>
+            </div>
+            <div>
+              <h3 id="dialogue-speaker-name">Pulpero Don Claudio</h3>
+              <span id="dialogue-speaker-role" class="speaker-tag">Dueño de la Pulpería</span>
+            </div>
+          </div>
+
+          <div class="dialogue-speech-box">
+            <p id="dialogue-text">"Gaucho Fierro... Más vale que tengas cuidado... por el bajo viene galopando el Comandante con dos milicos y orden de leva."</p>
+          </div>
+
+          <!-- Opciones de Diálogo -->
+          <div id="dialogue-choices" class="dialogue-options-list"></div>
+        </div>
+      </section>
+
+      <!-- DADO D20 PARA CHEQUEOS NARRATIVOS DE ATRIBUTO -->
+      <div id="dice-roll-modal" class="hidden">
+        <div class="dice-box">
+          <div class="dice-check-title" id="dice-check-title">Chequeo de Carisma</div>
+          <div class="dice-difficulty">Dificultad requerida: <strong id="dice-target-dc">12</strong></div>
+          <div class="d20-graphic" id="d20-visual">
+            <span id="d20-number">--</span>
+          </div>
+          <div class="dice-formula" id="dice-formula">Tirada (D20) + Modificador (+2)</div>
+          <div class="dice-result-msg" id="dice-result-msg">¡Lanzando el hueso!</div>
+          <button id="btn-dice-continue" class="btn-gauchesco primary hidden">CONTINUAR</button>
+        </div>
+      </div>
+
+      <!-- MODAL DE FICHA DE ATRIBUTOS DEL PERSONAJE -->
+      <div id="character-sheet-modal" class="modal-overlay hidden">
+        <div class="modal-panel stats-panel">
+          <div class="panel-header">
+            <h3>Ficha de Martín Fierro</h3>
+            <button id="btn-close-stats" class="btn-close">&times;</button>
+          </div>
+          <p class="panel-desc">Los atributos modifican el combate táctico 3D y desbloquean opciones exclusivas de resolución.</p>
+          <div class="character-progression-box">
+            <strong id="character-progression-summary">Nivel 1 · 0/100 EXP · Puntos de atributo: 0</strong>
+            <p>Derrota enemigos y completa capítulos para ganar experiencia. Al subir de nivel recibís un punto para elegir qué atributo mejorar.</p>
+            <div class="upgrade-buttons stat-upgrades">
+              <button class="upgrade-btn" data-stat-upgrade="fuerza">+ Fuerza</button>
+              <button class="upgrade-btn" data-stat-upgrade="resistencia">+ Resistencia</button>
+              <button class="upgrade-btn" data-stat-upgrade="carisma">+ Carisma</button>
+              <button class="upgrade-btn" data-stat-upgrade="supervivencia">+ Supervivencia</button>
+            </div>
+          </div>
+          
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-name">Fuerza (FUE)</div>
+              <div class="stat-val" id="stat-value-fuerza">15 (+2)</div>
+              <div class="stat-desc">Aumenta el daño de cuchillo y facón. Permite intimidar por la fuerza física.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-name">Agilidad (AGI)</div>
+              <div class="stat-val" id="stat-value-agilidad">14 (+2)</div>
+              <div class="stat-desc">Iniciativa en combate, mayor evasión y rango de paso por casilla.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-name">Resistencia (RES)</div>
+              <div class="stat-val" id="stat-value-resistencia">16 (+3)</div>
+              <div class="stat-desc">Puntos de salud máximos y resistencia a heridas de proyectil.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-name">Percepción (PER)</div>
+              <div class="stat-val" id="stat-value-percepcion">13 (+1)</div>
+              <div class="stat-desc">Detección de emboscadas, acierto a distancia y rastreo de huellas.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-name">Carisma (CAR)</div>
+              <div class="stat-val" id="stat-value-carisma">12 (+1)</div>
+              <div class="stat-desc">Elocuencia y payada. Convence a desertores y aplaca la furia.</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-name">Supervivencia (SUP)</div>
+              <div class="stat-val" id="stat-value-supervivencia">15 (+2)</div>
+              <div class="stat-desc">Conocimiento de la pampa, cura con caña y uso del entorno.</div>
+            </div>
+          </div>
+
+          <div class="perk-section">
+            <div class="perk-header">
+              <h4>Pericias del Gaucho</h4>
+              <span id="perk-points-label">Puntos de pericias: 0</span>
+            </div>
+            <p>Elegí una pericias al subir de nivel. Cada una cambia tu forma de pelear o de resolver la frontera.</p>
+            <div id="perk-list" class="perk-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL DE AYUDA / GUÍA -->
+      <div id="guide-modal" class="modal-overlay hidden">
+        <div class="modal-panel guide-panel">
+          <div class="panel-header">
+            <h3>Guía Táctica 3D: Entre el Fuego y la Pampa</h3>
+            <button id="btn-close-guide" class="btn-close">&times;</button>
+          </div>
+          <div class="guide-content">
+            <h4>1. Controles y Navegación 3D</h4>
+            <ul>
+              <li><strong>Click Izquierdo:</strong> Mover a Fierro a la celda 3D o seleccionar objetivo/enemigo para atacar.</li>
+              <li><strong>Click Derecho + Arrastrar:</strong> Orbitar la cámara 3D alrededor del escenario para ver detrás de carretas y paredes.</li>
+              <li><strong>Rueda del Mouse:</strong> Zoom de cámara táctica.</li>
+              <li><strong>Botón 🎥:</strong> Restablecer la vista isométrica predeterminada.</li>
+            </ul>
+            
+            <h4>2. Combate Táctico por Turnos en 3D</h4>
+            <ul>
+              <li><strong>Puntos de Acción (AP):</strong> Cada turno dispones de 4 AP para moverte, golpear con facón o disparar.</li>
+              <li><strong>Iniciativa:</strong> La barra superior muestra el orden de turnos. La Agilidad define quién actúa primero.</li>
+              <li><strong>Coberturas y línea de tiro:</strong> Las carretas y rocas dan cobertura parcial. Los edificios, ombúes y empalizadas bloquean la línea de visión: buscá un ángulo distinto.</li>
+              <li><strong>Flanqueo:</strong> Atacar cuerpo a cuerpo a un enemigo que ya está trabado con Cruz suma daño. El facón también puede dar golpes críticos.</li>
+              <li><strong>Estados:</strong> Fuego, sangrado, marcado, desmoralizado y aturdido alteran el combate. Los iconos aparecen sobre cada personaje.</li>
+              <li><strong>Nuevas acciones:</strong> <strong>Vigilar</strong> prepara un disparo de reacción; <strong>Payada</strong> marca y debilita a un enemigo; <strong>Vendaje</strong> cura sin gastar ginebra.</li>
+              <li><strong>Entorno interactivo:</strong> Hacé click en barriles de pólvora, cajones, aljibes y fogones. Los barriles explotan, los cajones dan botín y los fogones pueden prenderse.</li>
+              <li><strong>Compañero (Sargento Cruz):</strong> Actúa con iniciativa propia apoyándote con su facón.</li>
+            </ul>
+
+            <h4>3. Campaña, objetivos y progresión</h4>
+            <ul>
+              <li>La campaña tiene <strong>8 capítulos</strong> con objetivos distintos: eliminar, resistir oleadas, investigar un pueblo y derrotar jefes de varias fases.</li>
+              <li>Cada nivel te da <strong>puntos de atributo</strong> y <strong>puntos de pericia</strong>. Las pericias se eligen en la ficha (📊).</li>
+              <li>Las decisiones morales, la lealtad de Cruz y los capítulos resueltos en paz desbloquean <strong>6 finales alternativos</strong>.</li>
+              <li>La partida se guarda automáticamente al terminar cada capítulo. Podés continuar desde el menú principal.</li>
+            </ul>
+
+            <h4>4. Consejos de frontera</h4>
+            <ul>
+              <li>Usá <strong>Vigilar</strong> antes de retroceder: los enemigos que avancen recibirán un disparo gratis.</li>
+              <li>La <strong>Payada</strong> es un chequeo de Carisma. Si acierta, el enemigo queda marcado y pega menos durante dos turnos.</li>
+              <li>Los enemigos usan IA por arquetipo: fusileros buscan distancia, lanceros cargan y los jefes arengan a su tropa.</li>
+              <li>Completá las misiones secundarias (payada, testimonios, rescate de Picardía) para acceder a los mejores finales.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL DE MAPA DE VIAJE DE LA PAMPA (TRANSICIÓN DE NIVELES) -->
+      <div id="travel-map-modal" class="modal-overlay hidden">
+        <div class="modal-panel travel-map-panel">
+          <div class="panel-header">
+            <span class="badge-tag">CARTOGRAFÍA DE LA FRONTERA — 1872</span>
+            <h3 id="travel-map-title">Rumbo por la Pampa</h3>
+          </div>
+          <p class="travel-map-desc" id="travel-map-desc">
+            Has dejado atrás el primer enfrentamiento. Ahora el camino se abre hacia los territorios profundos de la frontera.
+          </p>
+
+          <section class="progression-panel" aria-label="Progresión y taller de armas">
+            <div class="progression-summary">
+              <strong id="progression-level">Nivel 1 · 0/100 EXP</strong>
+              <span id="progression-points">Puntos de atributo: 0</span>
+              <span id="progression-scrap">Piezas de metal: 0</span>
+            </div>
+            <div class="upgrade-columns">
+              <div class="upgrade-group">
+                <h4>Desarrollo de Fierro</h4>
+                <p>Al subir de nivel ganás un punto. Cada mejora suma +2 al atributo elegido.</p>
+                <div class="upgrade-buttons stat-upgrades">
+                  <button class="upgrade-btn" data-stat-upgrade="fuerza">Fuerza</button>
+                  <button class="upgrade-btn" data-stat-upgrade="resistencia">Resistencia</button>
+                  <button class="upgrade-btn" data-stat-upgrade="carisma">Carisma</button>
+                  <button class="upgrade-btn" data-stat-upgrade="supervivencia">Supervivencia</button>
+                </div>
+              </div>
+              <div class="upgrade-group">
+                <h4>Taller de campaña</h4>
+                <p>Usá el metal recuperado para reforzar un arma. Cada rango agrega 6 de daño.</p>
+                <div class="upgrade-buttons weapon-upgrades">
+                  <button id="btn-upgrade-facon" class="upgrade-btn">Templar facón (+6 daño)</button>
+                  <button id="btn-upgrade-trabuco" class="upgrade-btn">Ajustar trabuco (+6 daño)</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="pampa-map-visual">
+            <div class="map-node completed" id="node-level-1">
+              <span class="node-icon">🏚️</span>
+              <span class="node-label">I. Pulpería 'La Colorada'</span>
+              <span class="node-status">COMPLETADO</span>
+            </div>
+            <div class="map-trail active"></div>
+            <div class="map-node current" id="node-level-2">
+              <span class="node-icon">🏕️</span>
+              <span class="node-label">II. Cañadón de los Cuatreros</span>
+              <span class="node-status">SIGUIENTE DESTINO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-3">
+              <span class="node-icon">🏰</span>
+              <span class="node-label">III. El Fortín de Frontera</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-4">
+              <span class="node-icon">🌙</span>
+              <span class="node-label">IV. El Salitral de las Ánimas</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-5">
+              <span class="node-icon">🏚️</span>
+              <span class="node-label">V. El Regreso a la Tapera</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-6">
+              <span class="node-icon">🌊</span>
+              <span class="node-label">VI. El Vado del Río Salado</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-7">
+              <span class="node-icon">🎸</span>
+              <span class="node-label">VII. La Noche de la Payada</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+            <div class="map-trail"></div>
+            <div class="map-node locked" id="node-level-8">
+              <span class="node-icon">🔥</span>
+              <span class="node-label">VIII. El Último Canto</span>
+              <span class="node-status">BLOQUEADO</span>
+            </div>
+          </div>
+
+          <div class="travel-actions">
+            <button id="btn-travel-next" class="btn-gauchesco primary">
+              <span class="icon">🐎</span> ENSILAR Y MARCHAR AL SIGUIENTE CAPÍTULO
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANTALLA DE FINALES ALTERNATIVOS Y EPÍLOGO NARRATIVO -->
+      <div id="result-modal" class="modal-overlay hidden">
+        <div class="modal-panel result-panel epilogue-panel">
+          <div class="badge-tag" id="epilogue-ending-tag">FINAL ALTERNATIVO 1 DE 6</div>
+          <h2 id="result-title">LA PAMPA NO PERDONA</h2>
+          <div class="flourish-divider"><span>❖</span></div>
+          <blockquote class="poetic-verse" id="result-verse">
+            «Aquí me pongo a cantar, / al compás de la vigüela...»
+          </blockquote>
+          <p id="result-narrative">El destino de Fierro en la frontera ha quedado sellado.</p>
+          
+          <div class="epilogue-stats-grid" id="result-summary"></div>
+          
+          <div class="menu-actions">
+            <button id="btn-restart" class="btn-gauchesco primary">JUGAR DE NUEVO (EXPLORAR OTRO FINAL)</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
