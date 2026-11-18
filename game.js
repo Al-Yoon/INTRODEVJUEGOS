@@ -12,12 +12,41 @@ class GauchoAudioEngine {
   constructor() {
     this.ctx = null;
     this.enabled = true;
+    this.volume = 0.8;
+    this.masterGain = null;
   }
 
   init() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) this.ctx = new AudioCtx();
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = this.enabled ? this.volume : 0;
+        this.masterGain.connect(this.ctx.destination);
+      }
+    } else if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
+  connectOutput(node) {
+    if (this.masterGain) node.connect(this.masterGain);
+    else if (this.ctx) node.connect(this.ctx.destination);
+  }
+
+  setVolume(value) {
+    const parsed = Number(value);
+    this.volume = Number.isFinite(parsed) ? clamp(parsed, 0, 1) : 0.8;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime, 0.02);
     }
   }
 
@@ -44,7 +73,7 @@ class GauchoAudioEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    this.connectOutput(gain);
     noise.start(now);
 
     const osc = this.ctx.createOscillator();
@@ -56,7 +85,7 @@ class GauchoAudioEngine {
     oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
     osc.connect(oscGain);
-    oscGain.connect(this.ctx.destination);
+    this.connectOutput(oscGain);
     osc.start(now);
     osc.stop(now + 0.18);
   }
@@ -85,7 +114,7 @@ class GauchoAudioEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    this.connectOutput(gain);
     noise.start(now);
   }
 
@@ -103,7 +132,7 @@ class GauchoAudioEngine {
         gain.gain.setValueAtTime(0.15, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        this.connectOutput(gain);
         osc.start(now);
         osc.stop(now + 0.12);
       }, i * 70);
@@ -123,7 +152,7 @@ class GauchoAudioEngine {
         gain.gain.setValueAtTime(0.14, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        this.connectOutput(gain);
         osc.start(now);
         osc.stop(now + 0.06);
       }, i * 65);
@@ -141,7 +170,7 @@ class GauchoAudioEngine {
       gain.gain.setValueAtTime(0.12, now + idx * 0.03);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      this.connectOutput(gain);
       osc.start(now + idx * 0.03);
       osc.stop(now + 1.25);
     });
@@ -167,7 +196,7 @@ class GauchoAudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    this.connectOutput(gain);
     noise.start(now);
 
     const osc = this.ctx.createOscillator();
@@ -178,7 +207,7 @@ class GauchoAudioEngine {
     oscGain.gain.setValueAtTime(0.5, now);
     oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
     osc.connect(oscGain);
-    oscGain.connect(this.ctx.destination);
+    this.connectOutput(oscGain);
     osc.start(now);
     osc.stop(now + 0.7);
   }
@@ -194,7 +223,7 @@ class GauchoAudioEngine {
       gain.gain.setValueAtTime(0.1, now + i * 0.06);
       gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.25);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      this.connectOutput(gain);
       osc.start(now + i * 0.06);
       osc.stop(now + i * 0.06 + 0.25);
     });
@@ -216,7 +245,7 @@ class GauchoAudioEngine {
       gain.gain.setValueAtTime(0.09, now + i * 0.18);
       gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.3);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      this.connectOutput(gain);
       osc.start(now + i * 0.18);
       osc.stop(now + i * 0.18 + 0.3);
     });
@@ -233,7 +262,7 @@ class GauchoAudioEngine {
       gain.gain.setValueAtTime(0.06, now + offset);
       gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      this.connectOutput(gain);
       osc.start(now + offset);
       osc.stop(now + offset + 0.08);
     });
@@ -241,6 +270,52 @@ class GauchoAudioEngine {
 }
 
 const audio = new GauchoAudioEngine();
+
+// -----------------------------------------------------------------------------
+// 1.b OPCIONES BÁSICAS PERSISTENTES (audio, cámara, interfaz y calidad)
+// -----------------------------------------------------------------------------
+const SETTINGS_KEY = "martin_fierro_options_v1";
+const DEFAULT_SETTINGS = Object.freeze({
+  volume: 80,
+  muted: false,
+  cameraSensitivity: 100,
+  showHints: true,
+  quality: "high"
+});
+
+function loadGameSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    const volume = Number(saved.volume);
+    const sensitivity = Number(saved.cameraSensitivity);
+    return {
+      volume: Number.isFinite(volume) ? clamp(volume, 0, 100) : DEFAULT_SETTINGS.volume,
+      muted: typeof saved.muted === "boolean" ? saved.muted : DEFAULT_SETTINGS.muted,
+      cameraSensitivity: Number.isFinite(sensitivity) ? clamp(sensitivity, 50, 200) : DEFAULT_SETTINGS.cameraSensitivity,
+      showHints: typeof saved.showHints === "boolean" ? saved.showHints : DEFAULT_SETTINGS.showHints,
+      quality: ["high", "medium", "low"].includes(saved.quality) ? saved.quality : DEFAULT_SETTINGS.quality
+    };
+  } catch (error) {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveGameSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(gameSettings));
+  } catch (error) {
+    console.warn("No se pudieron guardar las opciones básicas.", error);
+  }
+}
+
+function qualityPixelRatio(quality = gameSettings.quality) {
+  const deviceRatio = window.devicePixelRatio || 1;
+  if (quality === "low") return 1;
+  if (quality === "high") return Math.min(deviceRatio, 2);
+  return Math.min(deviceRatio, 1.35);
+}
+
+let gameSettings = loadGameSettings();
 
 // -----------------------------------------------------------------------------
 // 2. CONFIGURACIÓN DEL MUNDO 3D
@@ -313,15 +388,232 @@ const PERKS = [
 ];
 
 const SAVE_KEY = "martin_fierro_pampa_save_v2";
+const ENDINGS_KEY = "martin_fierro_endings_v1";
+
+// -----------------------------------------------------------------------------
+// 3.a MAPA DE LA TRAVESÍA: UBICACIÓN DE CADA CAPÍTULO EN LA FRONTERA
+// -----------------------------------------------------------------------------
+// La historia de Martín Fierro transcurre en la frontera sur de Buenos Aires.
+// Cada capítulo recibe una subzona pampeana para orientar al jugador.
+const CHAPTER_GEO = {
+  1: {
+    roman: "I",
+    title: "La Pulpería 'La Colorada'",
+    chapterTitle: "Capítulo I: La Pulpería 'La Colorada'",
+    short: "Pulpería",
+    zone: "Pampa bonaerense",
+    subzone: "Frontera interior",
+    province: "Buenos Aires",
+    icon: "🏚️",
+    mapX: 24,
+    mapY: 74,
+    detail: "La pulpería de campaña es el corazón del pago: allí se cruzan la payada, el comercio y la leva. La partida militar llega a imponer orden y a llevarse hombres para la frontera."
+  },
+  2: {
+    roman: "II",
+    title: "El Cañadón de los Cuatreros",
+    chapterTitle: "Capítulo II: El Cañadón de los Cuatreros",
+    short: "Cañadón",
+    zone: "Sierras del sur bonaerense",
+    subzone: "Cañadones y montes",
+    province: "Buenos Aires",
+    icon: "🏕️",
+    mapX: 42,
+    mapY: 64,
+    detail: "Entre cañadones y montes de chañar, los cuatreros controlan el paso al desierto. Baigorria y sus hombres negocian con la misma moneda que la ley: la fuerza."
+  },
+  3: {
+    roman: "III",
+    title: "El Fortín de Frontera",
+    chapterTitle: "Capítulo III: El Bastión del Fortín de Frontera",
+    short: "Fortín",
+    zone: "Línea de fortines",
+    subzone: "Frontera militar",
+    province: "Buenos Aires",
+    icon: "🏰",
+    mapX: 60,
+    mapY: 48,
+    detail: "El fortín marca la línea imaginaria entre la campaña y el territorio indígena. La empalizada, la comandancia y la garita convierten el lugar en una máquina de guerra."
+  },
+  4: {
+    roman: "IV",
+    title: "El Salitral de las Ánimas",
+    chapterTitle: "Capítulo IV: El Salitral de las Ánimas",
+    short: "Salitral",
+    zone: "Salitrales del oeste",
+    subzone: "Salinas y bañados",
+    province: "Buenos Aires",
+    icon: "🌙",
+    mapX: 34,
+    mapY: 52,
+    detail: "El salitral borra las huellas y desorienta a propios y extraños. De noche, la baqueana Mora guía a Fierro entre salinas, jagüeyes y rastreadores."
+  },
+  5: {
+    roman: "V",
+    title: "El Regreso a la Tapera",
+    chapterTitle: "Capítulo V: El Regreso a la Tapera",
+    short: "Tapera",
+    zone: "Campaña bonaerense",
+    subzone: "Pago y tapera",
+    province: "Buenos Aires",
+    icon: "🏚️",
+    mapX: 22,
+    mapY: 40,
+    detail: "La tapera es la casa que la leva dejó atrás. Al volver, Fierro descubre que la tierra y el ganado pasaron a manos de un estanciero que se dice dueño de todo."
+  },
+  6: {
+    roman: "VI",
+    title: "El Vado del Río Salado",
+    chapterTitle: "Capítulo VI: El Vado del Río Salado",
+    short: "Río Salado",
+    zone: "Río Salado",
+    subzone: "Límite de la frontera",
+    province: "Buenos Aires",
+    icon: "🌊",
+    mapX: 48,
+    mapY: 30,
+    detail: "El Río Salado es el límite natural de la frontera. Cuando crece, el vado se vuelve una trampa: solo queda resistir el fuego enemigo hasta que baje el agua."
+  },
+  7: {
+    roman: "VII",
+    title: "La Noche de la Payada",
+    chapterTitle: "Capítulo VII: La Noche de la Payada",
+    short: "Payada",
+    zone: "Camino real",
+    subzone: "Pulpería del Clavel Colorado",
+    province: "Buenos Aires",
+    icon: "🎸",
+    mapX: 68,
+    mapY: 66,
+    detail: "La pulpería del Clavel Colorado es el refugio de la memoria del pago. Allí se reúnen testimonios, coplas y pruebas contra el escribano que falsifica títulos."
+  },
+  8: {
+    roman: "VIII",
+    title: "El Último Canto",
+    chapterTitle: "Capítulo VIII: El Último Canto",
+    short: "Último canto",
+    zone: "Fortín San Martín",
+    subzone: "Frontera interior",
+    province: "Buenos Aires",
+    icon: "🔥",
+    mapX: 82,
+    mapY: 40,
+    detail: "El Fortín San Martín es la última carta del poder militar. Entre llamas y empalizadas, Fierro y Cruz enfrentan al Coronel Lagos para cerrar la historia."
+  }
+};
+
+// -----------------------------------------------------------------------------
+// 3.b CATÁLOGO DE FINALES (PARA EL ATLAS DE DESTINOS)
+// -----------------------------------------------------------------------------
+const ENDING_CATALOG = {
+  desert_freedom: {
+    order: 1,
+    roman: "I",
+    icon: "🐎",
+    title: "Cruzando la última frontera",
+    subtitle: "La huida al desierto libre",
+    place: "El desierto pampeano",
+    color: "#f39c12",
+    verse: "«Y siguiendo el fiel rumbo, / que aquel rumbo les marcaba, / entraron en el desierto, / donde nadie los hallaba.»",
+    hint: "Dejá que la historia siga su curso, sin imponer un pacto ni una venganza."
+  },
+  diplomatic: {
+    order: 2,
+    roman: "II",
+    icon: "🕊️",
+    title: "La justicia de la palabra",
+    subtitle: "El pacto de la ley criolla",
+    place: "La justicia del pago",
+    color: "#2ecc71",
+    verse: "«Los hermanos sean unidos, / porque ésa es la ley primera; / tengan unión verdadera / en cualquier tiempo que sea...»",
+    hint: "Acumulá al menos 2 resoluciones pacíficas usando el Carisma y las pruebas."
+  },
+  vengeance: {
+    order: 3,
+    roman: "III",
+    icon: "🗡️",
+    title: "Leyenda sangrienta de la pampa",
+    subtitle: "La furia del facón",
+    place: "La pampa en llamas",
+    color: "#e74c3c",
+    verse: "«El que pelea en la frontera / no tiene descanso ni abrigo; / donde pisa no hay amigo / ni perdón para el matrero...»",
+    hint: "Ganá al menos 2 combates imponiendo el filo y la pólvora."
+  },
+  sacrifice: {
+    order: 4,
+    roman: "IV",
+    icon: "🕯️",
+    title: "Cruz no consintió el crimen",
+    subtitle: "El sacrificio de Cruz",
+    place: "El patio de la estancia",
+    color: "#3498db",
+    verse: "«¡Cruz no consiente / que se cometa el delito / de matar a un valiente! / y al punto desenvainó...»",
+    hint: "En el capítulo final, Cruz debe caer para que su sacrificio cambie el destino."
+  },
+  payada_legend: {
+    order: 5,
+    roman: "V",
+    icon: "🎸",
+    title: "La verdad se canta y no se olvida",
+    subtitle: "El canto que quedó en la frontera",
+    place: "De fogón en fogón",
+    color: "#af7ac5",
+    verse: "«Y aquí me pongo a cantar / por la memoria del pago, / para que sepan los malos / que la verdad tiene estrago.»",
+    hint: "Ganá la payada y reuní los 3 testimonios contra el escribano."
+  },
+  caudillo: {
+    order: 6,
+    roman: "VI",
+    icon: "👑",
+    title: "La frontera aprendió a obedecer otra ley",
+    subtitle: "El caudillo de los pagos",
+    place: "La frontera de los gauchos",
+    color: "#e67e22",
+    verse: "«Los hermanos sean unidos, / y el pago será su casa; / que la fuerza de los muchos / quiebra la ley de los amos.»",
+    hint: "Imponete por intimidación al menos 2 veces y mantené la lealtad de Cruz en 90% o más."
+  },
+  death_fierro: {
+    order: 7,
+    roman: "VII",
+    icon: "🪦",
+    type: "defeat",
+    title: "La pampa no perdona",
+    subtitle: "La caída de Martín Fierro",
+    place: "La frontera sin regreso",
+    color: "#8e44ad",
+    verse: "«Malo es vivir en la frontera, / pero peor es sucumbir...»",
+    hint: "Caé en combate antes de terminar la travesía para inscribir esta ruta."
+  },
+  death_cruz: {
+    order: 8,
+    roman: "VIII",
+    icon: "🥀",
+    type: "defeat",
+    title: "El hermano que quedó en el camino",
+    subtitle: "La caída del Sargento Cruz",
+    place: "Donde cayó tu hermano",
+    color: "#c0392b",
+    verse: "«Cruz, amigo, ya no puedo / seguirte por este suelo: / la pampa se llevó el cielo / y con él se fue tu consuelo.»",
+    hint: "Dejá que Cruz caiga defendiéndote: la travesía se cierra con su muerte."
+  }
+};
+
+const ENDING_ORDER = Object.keys(ENDING_CATALOG).sort(
+  (a, b) => ENDING_CATALOG[a].order - ENDING_CATALOG[b].order
+);
 
 // -----------------------------------------------------------------------------
 // 3. ESTADO GLOBAL Y SEGUIMIENTO MORAL PARA FINALES
 // -----------------------------------------------------------------------------
 const Game = {
-  state: "TITLE", // "TITLE", "EXPLORATION", "DIALOGUE", "DICE_ROLL", "COMBAT", "TRAVEL_MAP", "EPILOGUE"
+  state: "TITLE", // "TITLE", "EXPLORATION", "DIALOGUE", "DICE_ROLL", "COMBAT", "TRAVEL_MAP", "TUTORIAL", "EPILOGUE"
+  isTutorial: false,
+  tutorialStep: null,
   currentLevel: 1, // Campaña de 8 capítulos
   activeUnitIndex: 0,
   selectedAction: "move",
+  explorationUnit: "fierro", // Unidad controlada durante la exploración: "fierro" | "cruz"
+  cruzFollowing: true,       // Si Cruz sigue automáticamente a Fierro al caminar
   hoverCell: { x: -1, y: -1 },
   hoverInteractable: null,
   combatQueue: [],
@@ -340,6 +632,8 @@ const Game = {
   lastCombatResolved: false,
   levelCompletionHandled: false,
   defeatShown: false,
+  lastResultReason: null,
+  cruzLowWarned: false,
   chapterCardTimer: null,
 
   inventory: {
@@ -371,7 +665,8 @@ const Game = {
     savedPicardia: false, // Misión secundaria del Nivel 2
     foundLevyOrders: false, // Prueba opcional de investigación del Nivel 1
     payadaWon: false,
-    cruzSacrificed: false
+    cruzSacrificed: false,
+    remorse: 0         // 0 - 100: remordimiento acumulado de la travesía
   },
 
   stats: {
@@ -934,6 +1229,8 @@ const container = document.getElementById("three-container");
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x18120e);
 scene.fog = new THREE.FogExp2(0x18120e, 0.015);
+const levelBackgroundTextures = new Map();
+const levelBackgroundLoader = new THREE.TextureLoader();
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.5, 300);
 function resetCamera() {
@@ -951,7 +1248,7 @@ function resetCamera() {
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(qualityPixelRatio());
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1094,9 +1391,10 @@ function applyCameraRig(dt) {
   if (cameraRig.mode === "tactical" || !fierroUnit || !fierroUnit.mesh) return;
 
   if (cameraRig.keys.size) {
+    const sensitivity = gameSettings.cameraSensitivity / 100;
     const turn = (cameraRig.keys.has("arrowleft") ? 1 : 0) + (cameraRig.keys.has("arrowright") ? -1 : 0);
     const tilt = (cameraRig.keys.has("arrowup") ? 1 : 0) + (cameraRig.keys.has("arrowdown") ? -1 : 0);
-    nudgeCameraLook(turn * dt * 1.8, tilt * dt * 1.1);
+    nudgeCameraLook(turn * dt * 1.8 * sensitivity, tilt * dt * 1.1 * sensitivity);
   }
 
   const unit = fierroUnit;
@@ -1162,7 +1460,8 @@ renderer.domElement.addEventListener("pointermove", event => {
   const dy = event.clientY - cameraRig.pointer.y;
   cameraRig.pointer.x = event.clientX;
   cameraRig.pointer.y = event.clientY;
-  nudgeCameraLook(-dx * 0.006, -dy * 0.005);
+  const sensitivity = gameSettings.cameraSensitivity / 100;
+  nudgeCameraLook(-dx * 0.006 * sensitivity, -dy * 0.005 * sensitivity);
 });
 
 function endCameraPointer(event) {
@@ -1182,7 +1481,8 @@ renderer.domElement.addEventListener("wheel", event => {
   if (cameraRig.mode === "tactical") return;
   event.preventDefault();
   if (cameraRig.mode === "third") {
-    cameraRig.distance = clamp(cameraRig.distance + event.deltaY * 0.004, 2.4, 13);
+    const sensitivity = gameSettings.cameraSensitivity / 100;
+    cameraRig.distance = clamp(cameraRig.distance + event.deltaY * 0.004 * sensitivity, 2.4, 13);
   }
 }, { passive: false });
 
@@ -1346,7 +1646,7 @@ const LEVELS = {
       { type: "post", gx: 14, gy: 7, gw: 1, gh: 1, cover: COVER.HALF, label: "Palenque" }
     ],
     units: [
-      new Unit3D({ id: "pulpero", name: "Don Claudio", faction: "neutral", gridX: 17, gridY: 4, maxHp: 70, role: "Pulpero" }),
+      new Unit3D({ id: "pulpero", name: "Don Claudio", faction: "neutral", gridX: 17, gridY: 6, maxHp: 70, role: "Pulpero" }),
       new Unit3D({ id: "comandante", name: "Comandante Mayorga", faction: "enemy", gridX: 19, gridY: 11, maxHp: 95, role: "Jefe de Partida" }),
       new Unit3D({ id: "soldado1", name: "Milico Riquelme", faction: "enemy", gridX: 20, gridY: 9, maxHp: 65, role: "Fusilero" }),
       new Unit3D({ id: "soldado2", name: "Milico Sosa", faction: "enemy", gridX: 21, gridY: 12, maxHp: 65, role: "Lancero" })
@@ -1386,7 +1686,7 @@ const LEVELS = {
       { type: "post", gx: 16, gy: 4, gw: 1, gh: 1, cover: COVER.HALF, label: "Garita de Vigilancia" }
     ],
     units: [
-      new Unit3D({ id: "juez", name: "Juez Don Zoilo", faction: "enemy", gridX: 20, gridY: 8, maxHp: 85, role: "Juez de Paz Corrupto" }),
+      new Unit3D({ id: "juez", name: "Juez Don Zoilo", faction: "enemy", gridX: 20, gridY: 11, maxHp: 85, role: "Juez de Paz Corrupto" }),
       new Unit3D({ id: "capitan", name: "Capitán Albornoz", faction: "enemy", gridX: 17, gridY: 8, maxHp: 105, role: "Veterano de Línea" }),
       new Unit3D({ id: "soldado3", name: "Fusilero del Fortín", faction: "enemy", gridX: 15, gridY: 4, maxHp: 70, role: "Tirador de Garita" }),
       new Unit3D({ id: "soldado4", name: "Soldado de Trinchera", faction: "enemy", gridX: 15, gridY: 12, maxHp: 70, role: "Guardia del Foso" })
@@ -1607,7 +1907,7 @@ LEVELS[7] = {
   units: [
     new Unit3D({ id: "juana", name: "La Parda Juana", faction: "neutral", gridX: 6, gridY: 5, maxHp: 55, role: "Cantinera y memoria del pago", variant: "civilian", dialogue: "juana_testimony", initiative: 8 }),
     new Unit3D({ id: "vizcacha", name: "El Viejo Vizcacha", faction: "neutral", gridX: 17, gridY: 8, maxHp: 50, role: "Baquiano de la pulpería", variant: "civilian", dialogue: "vizcacha_testimony", initiative: 6 }),
-    new Unit3D({ id: "cantor", name: "El Cantor Aurelio", faction: "neutral", gridX: 15, gridY: 3, maxHp: 65, role: "Payador de la frontera", variant: "civilian", dialogue: "cantor_payada", initiative: 9 }),
+    new Unit3D({ id: "cantor", name: "El Cantor Aurelio", faction: "neutral", gridX: 14, gridY: 4, maxHp: 65, role: "Payador de la frontera", variant: "civilian", dialogue: "cantor_payada", initiative: 9 }),
     new Unit3D({ id: "escribano", name: "Escribano Isidro", faction: "neutral", gridX: 9, gridY: 6, maxHp: 85, role: "Falsificador de títulos", archetype: "chief", variant: "civilian", dialogue: "escribano_encounter", initiative: 10 }),
     new Unit3D({ id: "guardia7a", name: "Matón Barrientos", faction: "enemy", gridX: 18, gridY: 7, maxHp: 75, role: "Guardia del escribano", archetype: "brute", initiative: 12, damageBonus: 2 }),
     new Unit3D({ id: "guardia7b", name: "Matón Ferro", faction: "enemy", gridX: 20, gridY: 9, maxHp: 70, role: "Guardia del escribano", archetype: "lancer", initiative: 11 })
@@ -1647,7 +1947,7 @@ LEVELS[8] = {
     { gx: 11, gy: 4, type: "fire", turns: 99 }
   ],
   units: [
-    new Unit3D({ id: "lagos", name: "Coronel Lagos", faction: "enemy", gridX: 21, gridY: 8, maxHp: 240, role: "Comandante del Fortín San Martín", archetype: "boss", variant: "military", isBoss: true, initiative: 16, damageBonus: 6, statusResist: 0.35, dialogue: "lagos_encounter" }),
+    new Unit3D({ id: "lagos", name: "Coronel Lagos", faction: "enemy", gridX: 21, gridY: 9, maxHp: 240, role: "Comandante del Fortín San Martín", archetype: "boss", variant: "military", isBoss: true, initiative: 16, damageBonus: 6, statusResist: 0.35, dialogue: "lagos_encounter" }),
     new Unit3D({ id: "capitan8", name: "Capitán Sarmiento", faction: "enemy", gridX: 18, gridY: 8, maxHp: 110, role: "Segundo de Lagos", archetype: "brute", initiative: 14, damageBonus: 4 }),
     new Unit3D({ id: "fusilero8a", name: "Fusilero del muro", faction: "enemy", gridX: 16, gridY: 2, maxHp: 75, role: "Tirador de empalizada", archetype: "musketeer", initiative: 12 }),
     new Unit3D({ id: "fusilero8b", name: "Fusilero de la garita", faction: "enemy", gridX: 16, gridY: 13, maxHp: 75, role: "Tirador de garita", archetype: "musketeer", initiative: 11 }),
@@ -1658,6 +1958,52 @@ LEVELS[8] = {
 LEVELS[6].title = "Capítulo VI: El Vado del Río Salado";
 LEVELS[7].title = "Capítulo VII: La Noche de la Payada";
 LEVELS[8].title = "Capítulo VIII: El Último Canto";
+
+// -----------------------------------------------------------------------------
+// 6.c BRIEFING DE CAPÍTULO: CONTEXTO, CONSEJO DE BAQUIANO Y CIERRE NARRATIVO
+// -----------------------------------------------------------------------------
+const CHAPTER_BRIEFINGS = {
+  1: {
+    context: "La partida militar galopa hacia la pulpería y Don Claudio sabe que la leva no perdona. La noche va a terminar en sangre o en palabras.",
+    hint: "Hablá con Don Claudio antes de que llegue la partida: lo que averigües cambia el arranque del combate.",
+    victory: "La pulpería queda en silencio y la primera legua de la fuga está ganada."
+  },
+  2: {
+    context: "El cañadón es la única puerta al desierto y El Pardo Baigorria cobra peaje por cada alma que cruza. Picardía espera atado entre las rocas.",
+    hint: "Podés negociar el paso o liberar a Picardía por la fuerza: las dos rutas pesan en el final de la travesía.",
+    victory: "El cañadón abre sus fauces y el desierto recibe a los que no tienen tierra."
+  },
+  3: {
+    context: "El Fortín de Frontera es la ley hecha empalizada. El Juez de Paz Don Zoilo firma condenas con la misma mano con la que roba tierras.",
+    hint: "Los barriles de pólvora del fortín dañan a todos: buscá que el estallido los agarre a ellos y no a vos.",
+    victory: "La empalizada cede y la ley de los amos pierde una trinchera."
+  },
+  4: {
+    context: "Bajo la luna, el salitral borra las huellas. Mora conoce el paso, pero los rastreadores de la partida no están dispuestos a dejarlos cruzar.",
+    hint: "La cobertura de las rocas apenas alcanza: mové a Cruz para flanquear a los rastreadores.",
+    victory: "El salitral queda atrás y con él las huellas que la ley seguía."
+  },
+  5: {
+    context: "La tapera sigue en pie, pero Don Evaristo la ocupó con capataces y guardias. Recuperarla es recuperar algo más que un rancho.",
+    hint: "El ombú y la carreta dan cobertura: no cruces el patio a campo abierto.",
+    victory: "La tapera vuelve a tener dueño, aunque la paz todavía no tenga precio."
+  },
+  6: {
+    context: "El río Salado crece y los colonos de Doña Ramona no pueden cruzar. La partida de Ferreyra llega con la crecida y con órdenes de despejar el vado.",
+    hint: "Es una resistencia: aguantá cinco rondas. La carreta y los juncos son tu mejor cobertura.",
+    victory: "El vado aguanta y los colonos cruzan con lo puesto y la vida entera."
+  },
+  7: {
+    context: "En la pulpería se juega la última carta: tres testimonios contra el Escribano Isidro. La noche de payada puede convertir una copla en sentencia.",
+    hint: "Reuní los tres testimonios antes de provocar al escribano: sin pruebas, la payada no basta.",
+    victory: "La copla quedó en el aire y la verdad encontró quien la cantara."
+  },
+  8: {
+    context: "El Fortín San Martín arde y el Coronel Lagos espera detrás de la empalizada. Es la última carta de la frontera y no se rinde sin fuego.",
+    hint: "Lagos resiste mucho daño: usá el polvorín, la cobertura y la payada antes de entrar al cuerpo a cuerpo.",
+    victory: "El último canto se escucha sobre las ruinas del fortín."
+  }
+};
 
 function clearGroup(group) {
   while (group.children.length > 0) {
@@ -1679,9 +2025,163 @@ function createPropRing(color = 0xf1c40f) {
   return ring;
 }
 
-function loadLevel(levelIndex) {
+// -----------------------------------------------------------------------------
+// 6.b TUTORIAL JUGABLE: ESCENARIO, PASOS Y GUÍA EN PANTALLA
+// -----------------------------------------------------------------------------
+const TUTORIAL_LEVEL = {
+  title: "Tutorial: La Primera Lección",
+  questTitle: "Aprender a sobrevivir en la frontera",
+  questStep: "Practicá el movimiento, la tirada de D20 y el combate por turnos. Es una lección aparte: no modifica tu campaña.",
+  ambientColor: 0x3d3122,
+  skyColor: 0x18120e,
+  backgroundLevel: 1,
+  weather: "clear",
+  playerStart: { fierro: { x: 7, y: 9 }, cruz: { x: 6, y: 10 } },
+  obstacles: [
+    { type: "building", gx: 15, gy: 3, gw: 5, gh: 4, cover: COVER.FULL, label: "Pulpería de práctica" },
+    { type: "campfire", gx: 10, gy: 11, gw: 1, gh: 1, cover: COVER.NONE, label: "Fogón del tutorial" },
+    { type: "wagon", gx: 13, gy: 9, gw: 2, gh: 1, cover: COVER.HALF, label: "Carreta de práctica" },
+    { type: "tree", gx: 3, gy: 4, gw: 2, gh: 2, cover: COVER.FULL, label: "Ombú del camino" }
+  ],
+  units: [
+    new Unit3D({
+      id: "tutorial_pulpero",
+      name: "Don Claudio",
+      faction: "neutral",
+      gridX: 10,
+      gridY: 8,
+      maxHp: 70,
+      role: "Pulpero de la frontera",
+      dialogue: "tutorial_intro"
+    }),
+    new Unit3D({
+      id: "tutorial_soldado",
+      name: "Milico de Práctica",
+      faction: "enemy",
+      gridX: 12,
+      gridY: 9,
+      maxHp: 18,
+      initiative: 2,
+      role: "Blanco de práctica",
+      archetype: "soldier"
+    })
+  ],
+  objective: { type: "eliminate", label: "Derrotar al milico de práctica" }
+};
+
+const TUTORIAL_STEPS = [
+  {
+    id: "intro",
+    badge: "TUTORIAL · INTRODUCCIÓN",
+    title: "La primera lección",
+    text: "Sos Martín Fierro y estás por salir a la pampa. Don Claudio va a enseñarte lo básico: moverte, leer una tirada de D20 y pelear por turnos. Esta lección no toca tu campaña guardada.",
+    hint: "",
+    cta: "Empezar la lección",
+    action: "next",
+    progress: 0
+  },
+  {
+    id: "move",
+    badge: "PASO 1 DE 5",
+    title: "Moverse por la pampa",
+    text: "Hacé click izquierdo sobre el pasto para que el personaje seleccionado camine hasta ahí. En exploración moverte es gratis y no gasta Puntos de Acción. Con [Tab] o haciendo click en los retratos alternás entre Fierro y Cruz; Cruz te sigue automáticamente si no lo separás.",
+    hint: "Click en el suelo para caminar · [Tab] cambia de personaje",
+    progress: 20
+  },
+  {
+    id: "talk",
+    badge: "PASO 2 DE 5",
+    title: "Hablar con la gente",
+    text: "Don Claudio espera junto a la pulpería. Hacé click sobre él para abrir el diálogo. Las conversaciones esconden pistas, decisiones y peligros.",
+    hint: "Click sobre Don Claudio",
+    progress: 40
+  },
+  {
+    id: "dice",
+    badge: "PASO 3 DE 5",
+    title: "La tirada de D20",
+    text: "Elegí la opción de Carisma. El juego tira 1D20 y le suma tu modificador: (atributo − 10) ÷ 2. Si el total iguala o supera la CD, tenés éxito. Un 20 natural siempre gana.",
+    hint: "Elegí [CARISMA (CD 10)] en el diálogo",
+    progress: 60
+  },
+  {
+    id: "diceResult",
+    badge: "PASO 3 DE 5",
+    title: "Leer el resultado",
+    text: "El dado ya está tirado: el total se compara con la CD y el diálogo muestra la consecuencia. Un fallo no termina la lección, solo abre otra escena.",
+    hint: "Cerrá el diálogo para empezar el combate",
+    progress: 65
+  },
+  {
+    id: "combatIntro",
+    badge: "PASO 4 DE 5",
+    title: "El combate por turnos",
+    text: "Cuando empieza una pelea, cada personaje actúa por iniciativa. Tenés 4 Puntos de Acción (AP): moverte cuesta 1 y atacar con el facón 2. Cuando se terminan, pasás turno.",
+    hint: "",
+    cta: "A las armas",
+    action: "combat",
+    progress: 70
+  },
+  {
+    id: "attack",
+    badge: "PASO 4 DE 5",
+    title: "Atacar con el facón",
+    text: "Es tu turno y el milico está a un paso. Elegí Facón [2] en la barra de abajo y hacé click sobre él. El facón siempre acierta si estás en rango; moverte primero costaría 1 AP.",
+    hint: "Tecla 2 · click sobre el milico",
+    progress: 80
+  },
+  {
+    id: "victory",
+    badge: "TUTORIAL COMPLETADO",
+    title: "¡Ya sabés pelear!",
+    text: "Así funciona el ciclo: explorar, conversar, decidir y combatir. En la campaña cada capítulo suma experiencia, historia y finales distintos. Podés repetir esta lección cuando quieras desde el menú.",
+    hint: "",
+    cta: "Volver al menú",
+    action: "exit",
+    progress: 100
+  },
+  {
+    id: "defeat",
+    badge: "TUTORIAL · PRÁCTICA",
+    title: "Te tomaron por sorpresa",
+    text: "En el tutorial no se pierde la campaña: esto es solo práctica. En la campaña real, caer en combate borra el avance del capítulo, así que conviene cuidar los AP y la cobertura.",
+    hint: "",
+    cta: "Reintentar lección",
+    action: "restart",
+    progress: 0
+  }
+];
+
+function applyLevelBackground(levelIndex, levelData) {
+  // El color por nivel queda visible mientras termina la carga del panorama.
+  scene.background = new THREE.Color(levelData.skyColor);
+  scene.fog.color.setHex(levelData.skyColor);
+
+  const backgroundNames = [
+    "pulperia", "canadon", "fortin", "salitral", "tapera", "vado", "payada", "ultimo-canto"
+  ];
+  const backgroundPath = `assets/backgrounds/chapter-${String(levelIndex).padStart(2, "0")}-${backgroundNames[levelIndex - 1]}.png`;
+  const cachedTexture = levelBackgroundTextures.get(backgroundPath);
+  if (cachedTexture) {
+    scene.background = cachedTexture;
+    return;
+  }
+
+  levelBackgroundLoader.load(backgroundPath, loadedTexture => {
+    loadedTexture.mapping = THREE.EquirectangularReflectionMapping;
+    loadedTexture.encoding = THREE.sRGBEncoding;
+    loadedTexture.magFilter = THREE.LinearFilter;
+    loadedTexture.minFilter = THREE.LinearFilter;
+    levelBackgroundTextures.set(backgroundPath, loadedTexture);
+    if (Game.activeLevelData === levelData) scene.background = loadedTexture;
+  }, undefined, error => {
+    console.warn(`No se pudo cargar el panorama del capítulo ${levelIndex}.`, error);
+  });
+}
+
+function loadLevel(levelIndex, levelDataOverride = null) {
   Game.currentLevel = levelIndex;
-  const levelData = LEVELS[levelIndex];
+  const levelData = levelDataOverride || LEVELS[levelIndex];
   if (!levelData) return;
 
   Game.activeLevelData = levelData;
@@ -1692,8 +2192,11 @@ function loadLevel(levelIndex) {
   Game.waveIndex = 0;
   Game.levelCompletionHandled = false;
   Game.defeatShown = false;
+  Game.cruzLowWarned = false;
   // Los testimonios del capítulo VII viajan con Fierro hasta el fortín.
-  if (levelIndex !== 8) Game.testimonies = [];
+  // No borrarlos al recargar el capítulo VII: el jugador perdería todo
+  // el avance de la investigación al retomar la partida.
+  if (levelIndex < 7) Game.testimonies = [];
   Game.interactables = [];
   Game.hazards = [];
   if (!levelData.objective) levelData.objective = { type: "eliminate", label: "Derrotar a todos los enemigos" };
@@ -1711,8 +2214,7 @@ function loadLevel(levelIndex) {
   updateObjectiveUI();
 
   // Colores de atmósfera 3D
-  scene.background.setHex(levelData.skyColor);
-  scene.fog.color.setHex(levelData.skyColor);
+  applyLevelBackground(levelData.backgroundLevel || levelIndex, levelData);
   terrainMat.color.setHex(levelData.ambientColor);
   scene.fog.density = WEATHER[levelData.weather || "clear"].fog;
   sunLight.intensity = WEATHER[levelData.weather || "clear"].sun;
@@ -1970,12 +2472,19 @@ function loadLevel(levelIndex) {
     scene.remove(u.mesh);
     u.detachOverlay();
   });
-  Game.levelUnits = levelData.units;
+  // Copia defensiva: las oleadas agregadas durante el combate no deben
+  // quedar guardadas dentro de los datos del nivel para futuras partidas.
+  Game.levelUnits = levelData.units.slice();
   Game.levelUnits.forEach(u => {
     u.statuses = {};
     u.isDead = false;
     u.hp = u.maxHp;
     u.clearTransientStates();
+  });
+  // Red de seguridad: una unidad dentro de un edificio o río quedaba
+  // inmovilizada y, si era enemiga, hacía imposible cerrar la misión.
+  Game.levelUnits.forEach(u => ensureUnitPlayablePosition(u, levelIndex));
+  Game.levelUnits.forEach(u => {
     u.updateOverlay();
     scene.add(u.mesh);
     u.attachOverlay();
@@ -1991,6 +2500,8 @@ function loadLevel(levelIndex) {
   cruzUnit.clearTransientStates();
   fierroUnit.moveTo(start.fierro.x, start.fierro.y);
   cruzUnit.moveTo(start.cruz.x, start.cruz.y);
+  Game.explorationUnit = "fierro";
+  Game.cruzFollowing = true;
   const chapterHeal = 20 + (hasPerk("segundo_aliento") ? 20 : 0);
   fierroUnit.hp = Math.min(fierroUnit.maxHp, Math.max(1, fierroUnit.hp) + chapterHeal);
   cruzUnit.hp = Math.min(cruzUnit.maxHp, Math.max(1, cruzUnit.hp) + chapterHeal);
@@ -2007,10 +2518,19 @@ function loadLevel(levelIndex) {
   resetCamera();
   updateHUD();
   updateObjectiveUI();
-  showChapterCard(levelIndex, levelData);
-  addCombatLog(`<strong>Entrando a: ${levelData.title}</strong>. Explora el entorno, habla con los personajes o inspecciona el escenario.`);
-  addCombatLog(`<strong>Objetivo:</strong> ${getObjectiveText()}`, "success");
-  saveGame(levelIndex);
+  if (Game.isTutorial) {
+    addCombatLog(`<strong>${levelData.title}</strong>. Esta lección está separada de tu campaña.`);
+    addCombatLog(`<strong>Objetivo:</strong> ${getObjectiveText()}`, "success");
+  } else {
+    if (CHAPTER_BRIEFINGS[levelIndex]) {
+      openChapterBriefing(levelIndex, levelData);
+    } else {
+      showChapterCard(levelIndex, levelData);
+    }
+    addCombatLog(`<strong>Entrando a: ${levelData.title}</strong>. Explora el entorno, habla con los personajes o inspecciona el escenario.`);
+    addCombatLog(`<strong>Objetivo:</strong> ${getObjectiveText()}`, "success");
+    saveGame(levelIndex);
+  }
 }
 
 function getCoverAt(gx, gy) {
@@ -2038,6 +2558,119 @@ function isCellBlocked(gx, gy, ignoreUnit = null) {
   }
   return false;
 }
+
+// -----------------------------------------------------------------------------
+// 6.b CONTROL DE CRUZ DURANTE LA EXPLORACIÓN
+// -----------------------------------------------------------------------------
+function getExplorationUnit() {
+  if (Game.explorationUnit === "cruz" && cruzUnit && !cruzUnit.isDead) return cruzUnit;
+  return fierroUnit;
+}
+
+function setExplorationUnit(which, options = {}) {
+  if (Game.state !== "EXPLORATION" && Game.state !== "DIALOGUE") return;
+  let target = which === "cruz" ? "cruz" : "fierro";
+  if (target === "cruz" && (!cruzUnit || cruzUnit.isDead)) target = "fierro";
+  const changed = Game.explorationUnit !== target;
+  Game.explorationUnit = target;
+  updateHUD();
+  if (changed && !options.silent) {
+    const unit = getExplorationUnit();
+    if (unit) showToast(`Controlás a ${unit.name}. [Tab] alterna entre Fierro y Cruz.`, "normal");
+  }
+}
+
+function updateExplorationSelection() {
+  if (!fierroUnit || !cruzUnit) return;
+  const exploring = Game.state === "EXPLORATION" || Game.state === "DIALOGUE";
+  const activeUnit = exploring ? getExplorationUnit() : null;
+  const fierroCard = document.getElementById("card-fierro");
+  const cruzCard = document.getElementById("card-cruz");
+
+  if (exploring) {
+    if (fierroCard) {
+      fierroCard.classList.toggle("active", activeUnit === fierroUnit);
+      fierroCard.title = "Click para controlar a Martín Fierro · [Tab] alterna";
+    }
+    if (cruzCard) {
+      cruzCard.classList.toggle("active", activeUnit === cruzUnit);
+      cruzCard.title = "Click para controlar al Sargento Cruz · [Tab] alterna";
+    }
+  }
+
+  [fierroUnit, cruzUnit].forEach(unit => {
+    if (!unit.selectionRing) return;
+    unit.selectionRing.scale.setScalar(exploring && unit === activeUnit ? 1.4 : 1);
+  });
+}
+
+// Busca una casilla libre junto a Fierro, priorizando la que queda "detrás"
+// respecto de la dirección en la que acaba de caminar.
+function findCruzFollowTile(previousX, previousY) {
+  if (!fierroUnit || !cruzUnit) return null;
+  const candidates = [];
+  const dx = Math.sign(fierroUnit.gridX - previousX);
+  const dy = Math.sign(fierroUnit.gridY - previousY);
+
+  if (dx || dy) {
+    candidates.push({ x: fierroUnit.gridX - dx, y: fierroUnit.gridY - dy });
+  }
+
+  const offsets = [
+    [-1, 0], [1, 0], [0, -1], [0, 1],
+    [-1, -1], [1, -1], [-1, 1], [1, 1]
+  ];
+  const neighbors = offsets
+    .map(([ox, oy]) => ({ x: fierroUnit.gridX + ox, y: fierroUnit.gridY + oy }))
+    .sort((a, b) => {
+      const da = Math.hypot(a.x - cruzUnit.gridX, a.y - cruzUnit.gridY);
+      const db = Math.hypot(b.x - cruzUnit.gridX, b.y - cruzUnit.gridY);
+      return da - db;
+    });
+  candidates.push(...neighbors);
+
+  const seen = new Set();
+  for (const cell of candidates) {
+    const key = `${cell.x},${cell.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (isCellBlocked(cell.x, cell.y, cruzUnit)) continue;
+    return cell;
+  }
+  return null;
+}
+
+function moveCruzNearFierro(previousX, previousY) {
+  if (!Game.cruzFollowing || !fierroUnit || !cruzUnit || cruzUnit.isDead) return false;
+  const distance = Math.hypot(cruzUnit.gridX - fierroUnit.gridX, cruzUnit.gridY - fierroUnit.gridY);
+  if (distance <= 1.5) return true;
+
+  const tile = findCruzFollowTile(previousX, previousY);
+  if (!tile) return false;
+  cruzUnit.moveTo(tile.x, tile.y);
+  return true;
+}
+
+function setCruzFollowing(following, options = {}) {
+  const next = !!following;
+  const changed = Game.cruzFollowing !== next;
+  Game.cruzFollowing = next;
+
+  if (next) {
+    moveCruzNearFierro(fierroUnit.gridX, fierroUnit.gridY);
+  }
+  updateHUD();
+
+  if (changed && !options.silent) {
+    showToast(
+      next
+        ? "Cruz vuelve a seguirte y buscará un lugar cerca de Fierro."
+        : "Cruz mantiene posición. Seleccionalo para ubicarlo tácticamente.",
+      next ? "success" : "normal"
+    );
+  }
+}
+
 
 // -----------------------------------------------------------------------------
 // 7. VISUALIZADOR DE RANGO TÁCTICO 3D
@@ -2145,6 +2778,26 @@ function getUnitAt(gx, gy) {
   return [fierroUnit, cruzUnit, ...Game.levelUnits].find(u => !u.isDead && u.gridX === gx && u.gridY === gy) || null;
 }
 
+// Devuelve la unidad cuyo modelo 3D está bajo el puntero. Sirve para que
+// hacer click sobre el sprite de Fierro o Cruz seleccione su casilla real,
+// en lugar de la porción de terreno que queda detrás del modelo.
+function getUnitAtPointer() {
+  if (Game.state !== "EXPLORATION" && Game.state !== "COMBAT") return null;
+  const units = [fierroUnit, cruzUnit, ...Game.levelUnits].filter(u => u && u.mesh && !u.isDead);
+  if (units.length === 0) return null;
+  raycaster.setFromCamera(mouseVec, camera);
+  const intersects = raycaster.intersectObjects(units.map(u => u.mesh), true);
+  for (const hit of intersects) {
+    let node = hit.object;
+    while (node) {
+      const unit = units.find(u => u.mesh === node);
+      if (unit) return unit;
+      node = node.parent;
+    }
+  }
+  return null;
+}
+
 renderer.domElement.addEventListener("mousemove", (e) => {
   const rect = renderer.domElement.getBoundingClientRect();
   mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2175,12 +2828,16 @@ renderer.domElement.addEventListener("mousemove", (e) => {
   }
   Game.hoverInteractable = null;
 
+  const hoveredUnitMesh = getUnitAtPointer();
+
   raycaster.setFromCamera(mouseVec, camera);
   const intersects = raycaster.intersectObject(terrainMesh);
 
   if (intersects.length > 0) {
     const hit = intersects[0].point;
-    const grid = worldToGrid(hit.x, hit.z);
+    const grid = hoveredUnitMesh
+      ? { x: hoveredUnitMesh.gridX, y: hoveredUnitMesh.gridY }
+      : worldToGrid(hit.x, hit.z);
 
     if (grid.x >= 0 && grid.x < GRID_COLS && grid.y >= 0 && grid.y < GRID_ROWS) {
       Game.hoverCell = grid;
@@ -2203,7 +2860,14 @@ renderer.domElement.addEventListener("mousemove", (e) => {
         ]);
         tacticalTooltip.classList.remove("hidden");
       } else if (hoveredUnit) {
-        const hint = hoveredUnit.dialogue ? "Click: iniciar conversación" : (hoveredUnit.faction === "enemy" ? "Click: provocar combate" : "Sin interacción");
+        let hint;
+        if (Game.state === "EXPLORATION" && hoveredUnit === fierroUnit) {
+          hint = Game.explorationUnit === "fierro" ? "Controlado · click en el suelo para mover" : "Click: controlar a Fierro";
+        } else if (Game.state === "EXPLORATION" && hoveredUnit === cruzUnit) {
+          hint = Game.explorationUnit === "cruz" ? "Controlado · click en el suelo para mover" : "Click: controlar a Cruz";
+        } else {
+          hint = hoveredUnit.dialogue ? "Click: iniciar conversación" : (hoveredUnit.faction === "enemy" ? "Click: provocar combate" : "Sin interacción");
+        }
         setTacticalTooltip(hoveredUnit.name, [
           ["Rol:", hoveredUnit.role],
           ["Facción:", hoveredUnit.faction === "neutral" ? "Neutral" : hoveredUnit.faction === "enemy" ? "Enemigo" : "Aliado"],
@@ -2229,6 +2893,8 @@ renderer.domElement.addEventListener("mousemove", (e) => {
 renderer.domElement.addEventListener("click", () => {
   audio.init();
 
+  if (Game.isTutorial && tutorialInputBlocked()) return;
+
   const hx = Game.hoverCell.x;
   const hy = Game.hoverCell.y;
 
@@ -2249,7 +2915,16 @@ renderer.domElement.addEventListener("click", () => {
     }
 
     const clickedUnit = getUnitAt(hx, hy);
-    if (clickedUnit && clickedUnit !== fierroUnit && clickedUnit !== cruzUnit) {
+    if (clickedUnit === fierroUnit || clickedUnit === cruzUnit) {
+      setExplorationUnit(clickedUnit === fierroUnit ? "fierro" : "cruz");
+      return;
+    }
+
+    if (clickedUnit) {
+      if (Game.isTutorial && clickedUnit.id === "tutorial_soldado" && Game.tutorialStep !== "attack") {
+        showToast("Primero escuchá a Don Claudio. La lección todavía no empezó.", "warning");
+        return;
+      }
       if (clickedUnit.dialogue) {
         openDialogue(clickedUnit.dialogue);
         return;
@@ -2263,8 +2938,22 @@ renderer.domElement.addEventListener("click", () => {
       return;
     }
 
-    if (!isCellBlocked(hx, hy, fierroUnit)) {
+    const activeUnit = getExplorationUnit();
+    if (!activeUnit || isCellBlocked(hx, hy, activeUnit)) return;
+
+    if (activeUnit === fierroUnit) {
+      const previousX = fierroUnit.gridX;
+      const previousY = fierroUnit.gridY;
       fierroUnit.moveTo(hx, hy);
+      moveCruzNearFierro(previousX, previousY);
+      if (Game.isTutorial && Game.tutorialStep === "move") tutorialSetStep("talk");
+    } else {
+      const wasFollowing = Game.cruzFollowing;
+      cruzUnit.moveTo(hx, hy);
+      if (wasFollowing) {
+        setCruzFollowing(false, { silent: true });
+        showToast("Cruz mantiene posición. Usá el botón de seguimiento para que vuelva a seguir a Fierro.", "normal");
+      }
     }
     return;
   }
@@ -2397,6 +3086,84 @@ function showChapterCard(levelIndex, levelData) {
   card.style.animation = "";
   if (Game.chapterCardTimer) clearTimeout(Game.chapterCardTimer);
   Game.chapterCardTimer = setTimeout(() => card.classList.add("hidden"), 2700);
+}
+
+// --- BRIEFING DE CAPÍTULO ---
+const OBJECTIVE_TYPE_LABELS = {
+  eliminate: "COMBATE TÁCTICO",
+  survive: "RESISTENCIA",
+  investigate: "INVESTIGACIÓN"
+};
+
+function getChapterDisplayTitle(levelData) {
+  if (!levelData || !levelData.title) return "La frontera";
+  const titleParts = levelData.title.split(":");
+  return titleParts.length > 1 ? titleParts.slice(1).join(":").trim() : levelData.title;
+}
+
+function openChapterBriefing(levelIndex, levelData) {
+  const modal = document.getElementById("chapter-briefing-modal");
+  if (!modal || !levelData) return;
+
+  const briefing = CHAPTER_BRIEFINGS[levelIndex] || {};
+  const objective = levelData.objective || { type: "eliminate", label: "Sobrevivir en la frontera" };
+  const units = levelData.units || [];
+  const enemies = units.filter(unit => unit.faction === "enemy");
+  const neutrals = units.filter(unit => unit.faction === "neutral");
+  const waves = levelData.waves || [];
+
+  const card = document.getElementById("chapter-card");
+  if (card) card.classList.add("hidden");
+  if (Game.chapterCardTimer) clearTimeout(Game.chapterCardTimer);
+
+  document.getElementById("briefing-kicker").innerText = `CAPÍTULO ${romanNumeral(levelIndex)}`;
+  document.getElementById("briefing-title").innerText = getChapterDisplayTitle(levelData);
+  document.getElementById("briefing-subtitle").innerText = levelData.subtitle || levelData.questTitle || "";
+  document.getElementById("briefing-context").innerText = briefing.context || levelData.questStep || "";
+  document.getElementById("briefing-objective").innerText = objective.label;
+  document.getElementById("briefing-type").innerText = objective.boss
+    ? "DUELO DE JEFES"
+    : (OBJECTIVE_TYPE_LABELS[objective.type] || "MISIÓN");
+
+  const enemyList = document.getElementById("briefing-enemies");
+  enemyList.innerHTML = enemies.length
+    ? enemies.map(unit => `
+        <li>
+          <strong>${unit.name}${unit.isBoss ? " · JEFE" : ""}</strong>
+          <span>${unit.role || "Enemigo de la frontera"}</span>
+        </li>
+      `).join("")
+    : `<li><strong>Sin enemigos a la vista</strong><span>La amenaza puede aparecer durante el capítulo</span></li>`;
+
+  const wavesNote = document.getElementById("briefing-waves");
+  if (wavesNote) {
+    wavesNote.innerText = waves.length
+      ? `Refuerzos enemigos en las rondas ${waves.map(wave => wave.round).join(" y ")}.`
+      : "";
+    wavesNote.classList.toggle("hidden", !waves.length);
+  }
+
+  const npcsNote = document.getElementById("briefing-npcs");
+  if (npcsNote) {
+    npcsNote.innerText = neutrals.length
+      ? `En el terreno también: ${neutrals.map(unit => unit.name).join(", ")}.`
+      : "";
+    npcsNote.classList.toggle("hidden", !neutrals.length);
+  }
+
+  const hintWrap = document.getElementById("briefing-hint-wrap");
+  document.getElementById("briefing-hint").innerText = briefing.hint || "";
+  if (hintWrap) hintWrap.classList.toggle("hidden", !briefing.hint);
+
+  Game.state = "BRIEFING";
+  audio.playChord([196, 246.94, 293.66]);
+  modal.classList.remove("hidden");
+}
+
+function closeChapterBriefing() {
+  const modal = document.getElementById("chapter-briefing-modal");
+  if (modal) modal.classList.add("hidden");
+  if (Game.state === "BRIEFING") Game.state = "EXPLORATION";
 }
 
 function setupWeather(type) {
@@ -2626,6 +3393,8 @@ function applyHazardDamage(unit) {
   unit.addStatus("burning");
   spawnDamageNumber(unit, `-${damage}`, "status");
   addCombatLog(`🔥 El fuego del fortín quema a <strong>${unit.name}</strong> (-${damage} HP).`, "crit");
+  // En combate lo resuelve startCurrentTurn; fuera de combate hay que cerrar la partida acá.
+  if (unit.hp <= 0 && Game.state !== "COMBAT") handleStatusDeath(unit);
   return true;
 }
 
@@ -2721,12 +3490,12 @@ function useInteractable(prop) {
     addCombatLog("La pólvora abre un cráter y enciende las brasas del suelo.", "crit");
     addHazardAt(prop.gx, prop.gy, 3);
     if (fierroUnit.hp <= 0) {
-      showDefeat();
+      showDefeat({ cause: "fierro" });
       return;
     }
-    if (cruzUnit.hp <= 0 && !Game.morality.cruzSacrificed) {
-      Game.morality.cruzSacrificed = true;
-      addCombatLog("¡El Sargento Cruz ha caído en la explosión!", "crit");
+    if (cruzUnit.hp <= 0) {
+      handleCruzDeath("la explosión del barril");
+      return;
     }
     if (Game.state === "COMBAT") checkCombatResolution();
   } else if (prop.type === "crate") {
@@ -2826,6 +3595,91 @@ function startCombatSequence() {
   startCurrentTurn();
 }
 
+// -----------------------------------------------------------------------------
+// 12.b REMORDIMIENTO: EL PESO DE LA FRONTERA
+// -----------------------------------------------------------------------------
+function adjustRemorse(amount, reason) {
+  const before = clamp(Number(Game.morality.remorse) || 0, 0, 100);
+  Game.morality.remorse = clamp(before + amount, 0, 100);
+  const delta = Math.round(Game.morality.remorse - before);
+  if (delta !== 0) {
+    const sign = delta > 0 ? "+" : "";
+    addCombatLog(
+      `<strong>Remordimiento ${sign}${delta}</strong>${reason ? ` · ${reason}` : ""} (${Game.morality.remorse}%).`,
+      delta > 0 ? "crit" : "success"
+    );
+  }
+  updateRemorseUI();
+  return Game.morality.remorse;
+}
+
+function updateRemorseUI() {
+  const value = clamp(Number(Game.morality.remorse) || 0, 0, 100);
+  const text = document.getElementById("cruz-remorse-text");
+  const row = document.getElementById("cruz-remorse-row");
+  if (text) text.innerText = `${value}% · ${remorseLabel(value)}`;
+  if (row) {
+    row.classList.toggle("remorse-low", value < 34);
+    row.classList.toggle("remorse-mid", value >= 34 && value < 67);
+    row.classList.toggle("remorse-high", value >= 67);
+  }
+}
+
+function remorseLabel(value) {
+  if (value >= 85) return "quebrado";
+  if (value >= 67) return "atormentado";
+  if (value >= 34) return "cargado";
+  if (value > 0) return "tranquilo";
+  return "en paz";
+}
+
+function getRemorseFlavor() {
+  const value = clamp(Number(Game.morality.remorse) || 0, 0, 100);
+  if (value >= 67) return "Los muertos de la travesía ya no te dejan dormir: cada copla suena a réquiem.";
+  if (value >= 34) return "Llevás la frontera en los hombros: hay noches en que el facón pesa más que el alma.";
+  if (value > 0) return "Alguna cuenta quedó abierta con la pampa, pero todavía podés mirar atrás.";
+  return "Tenés la conciencia limpia, aunque la pampa nunca la devuelva entera.";
+}
+
+// Si Cruz cae, la travesía se termina: la hermandad era el último lazo con el pago.
+function handleCruzDeath(cause) {
+  if (Game.morality.cruzSacrificed) return false;
+  Game.morality.cruzSacrificed = true;
+
+  Game.cruzLoyalty = Math.max(0, Math.min(100, Game.cruzLoyalty));
+  adjustRemorse(50, "Cruz cayó defendiéndote");
+  addCombatLog(
+    `<strong>¡El Sargento Cruz ha caído${cause ? ` (${cause})` : ""}!</strong> La travesía no tiene sentido sin tu hermano.`,
+    "crit"
+  );
+  showToast("Cruz ha caído. La travesía termina acá.", "warning");
+
+  if (Game.isTutorial) {
+    tutorialDefeat();
+    return true;
+  }
+
+  const totalLevels = Object.keys(LEVELS).length;
+  if (Game.currentLevel >= totalLevels) {
+    // En el último capítulo su muerte es el sacrificio que cierra la historia.
+    Game.defeatShown = true;
+    addCombatLog("Cruz se interpone una última vez: su sacrificio cambia el destino de la frontera.", "crit");
+    setTimeout(() => {
+      if (Game.state === "COMBAT" || Game.state === "EXPLORATION") {
+        ["combat-banner", "turn-order-bar"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.classList.add("hidden");
+        });
+        triggerEpilogue("sacrifice");
+      }
+    }, 900);
+    return true;
+  }
+
+  showDefeat({ cause: "cruz" });
+  return true;
+}
+
 function handleStatusDeath(unit) {
   if (!unit.isDead) {
     unit.hp = 0;
@@ -2834,12 +3688,11 @@ function handleStatusDeath(unit) {
     if (unit.faction === "enemy") awardExperience(30 + Game.currentLevel * 4, "Enemigo neutralizado");
   }
   if (unit === fierroUnit) {
-    showDefeat();
+    showDefeat({ cause: "fierro" });
     return true;
   }
-  if (unit === cruzUnit && !Game.morality.cruzSacrificed) {
-    Game.morality.cruzSacrificed = true;
-    addCombatLog("¡El Sargento Cruz ha caído cubriendo tu espalda!", "crit");
+  if (unit === cruzUnit) {
+    return handleCruzDeath("heridas y fuego");
   }
   return false;
 }
@@ -3020,6 +3873,23 @@ function findFreeCellNear(gx, gy) {
   return null;
 }
 
+function ensureUnitPlayablePosition(unit, levelIndex) {
+  if (!isCellBlocked(unit.gridX, unit.gridY, unit)) return false;
+  const free = findFreeCellNear(unit.gridX, unit.gridY);
+  if (!free) {
+    console.warn(`Capítulo ${levelIndex}: no hay casilla libre para reubicar a ${unit.name}.`);
+    return false;
+  }
+  unit.gridX = free.x;
+  unit.gridY = free.y;
+  const pos = gridToWorld(free.x, free.y);
+  unit.mesh.position.set(pos.x, 0, pos.z);
+  unit.targetPos.set(pos.x, 0, pos.z);
+  unit.isMoving = false;
+  console.warn(`Capítulo ${levelIndex}: ${unit.name} estaba dentro de un obstáculo y fue reubicado en (${free.x}, ${free.y}).`);
+  return true;
+}
+
 function getClosestTarget(unit) {
   return [fierroUnit, cruzUnit]
     .filter(t => !t.isDead)
@@ -3034,14 +3904,15 @@ function checkCombatResolution() {
   const objective = Game.activeLevelData ? Game.activeLevelData.objective : { type: "eliminate" };
 
   if (fierroUnit.isDead) {
-    showDefeat();
+    showDefeat({ cause: "fierro" });
     return true;
   }
+  // Con Cruz caído en el último capítulo ya se decidió el final: no seguir resolviendo el combate.
+  if (Game.defeatShown) return true;
 
   const enemiesAlive = Game.levelUnits.filter(u => u.faction === "enemy" && !u.isDead);
   if (cruzUnit.isDead && !Game.morality.cruzSacrificed) {
-    Game.morality.cruzSacrificed = true;
-    addCombatLog("¡El Sargento Cruz ha caído cubriendo tu espalda!", "crit");
+    if (handleCruzDeath("cubriendo tu espalda")) return true;
   }
 
   if (objective.type === "investigate") {
@@ -3085,6 +3956,10 @@ function returnToExploration() {
 
 function completeCombatVictory(reason) {
   if (Game.combatLock) return;
+  if (Game.isTutorial) {
+    tutorialVictory(reason);
+    return;
+  }
   Game.combatLock = true;
   Game.morality.combatWins++;
   addCombatLog(`<strong>${reason}.</strong>`, "success");
@@ -3162,7 +4037,7 @@ async function executeEnemyAI(unit) {
     triggerOverwatch(unit);
     if (unit.isDead) break;
     if (fierroUnit.isDead) {
-      showDefeat();
+      showDefeat({ cause: "fierro" });
       return;
     }
   }
@@ -3364,12 +4239,12 @@ function performAttack(attacker, target, type, options = {}) {
       if (target.isBoss) triggerBossPhase(target);
     }
     if (target === fierroUnit) {
-      showDefeat();
+      showDefeat({ cause: "fierro" });
       return true;
     }
-    if (target === cruzUnit && !Game.morality.cruzSacrificed) {
-      Game.morality.cruzSacrificed = true;
-      addCombatLog("¡El Sargento Cruz ha caído cubriendo tu espalda!", "crit");
+    if (target === cruzUnit) {
+      handleCruzDeath("en combate");
+      return true;
     }
   } else {
     triggerBossPhase(target);
@@ -3527,10 +4402,12 @@ function collectTestimony(id, name) {
 function forceHostile(...ids) {
   ids.forEach(id => {
     const unit = Game.levelUnits.find(u => u.id === id);
-    if (!unit) return;
+    // No resucitar guardias ya derrotados: al volver a provocar al escribano
+    // reaparecían con la vida al máximo y el combate se hacía interminable.
+    if (!unit || unit.isDead) return;
+    const wasNeutral = unit.faction === "neutral";
     unit.faction = "enemy";
-    unit.isDead = false;
-    unit.hp = unit.maxHp;
+    if (wasNeutral) unit.hp = unit.maxHp;
     if (unit.overlayEl) {
       unit.overlayEl.classList.remove("neutral");
       unit.overlayEl.classList.add("hostile");
@@ -3646,7 +4523,7 @@ const DIALOGUE_NODES = {
     avatar: "🎖️",
     text: "¡Malditos bárbaros! Su reputación los precede... No vale la pena morir por un gaucho alzado. ¡Media vuelta, partida!",
     choices: [
-      { text: "«Se han marchado. Sigamos adelante, Cruz.»", tag: "INTIMIDACIÓN EXITOSA", type: "intimidacion", action: () => { closeDialogue(); Game.morality.intimidations++; onLevelCompleted(); } }
+      { text: "«Se han marchado. Sigamos adelante, Cruz.»", tag: "INTIMIDACIÓN EXITOSA", type: "intimidacion", action: () => { closeDialogue(); Game.morality.intimidations++; adjustRemorse(10, "la partida se fue por miedo, no por justicia"); onLevelCompleted(); } }
     ]
   },
   comandante_angry: {
@@ -4128,6 +5005,51 @@ const DIALOGUE_NODES = {
     choices: [
       { text: "«¡Cruz, a las carretas! ¡Esta noche termina la frontera!»", tag: "COMBATE FINAL", type: "normal", action: () => { closeDialogue(); startCombatSequence(); } }
     ]
+  },
+  tutorial_intro: {
+    speaker: "Don Claudio",
+    role: "Pulpero de la frontera",
+    avatar: "🍺",
+    text: "«Ah, don Fierro. Antes de salir a la pampa conviene saber leer el terreno. Cualquiera desenvaina un facón, pero no cualquiera vuelve para contarlo. ¿Me da su palabra de que va a escuchar?»",
+    choices: [
+      {
+        text: "«Tiene mi palabra, Don Claudio. Enséñeme lo que haga falta.»",
+        tag: "CARISMA (CD 10)",
+        type: "carisma",
+        dc: 10,
+        statKey: "carisma",
+        onSuccess: "tutorial_dice_success",
+        onFail: "tutorial_dice_fail"
+      }
+    ]
+  },
+  tutorial_dice_success: {
+    speaker: "Don Claudio",
+    role: "Pulpero de la frontera",
+    avatar: "🍺",
+    text: "«Bien dicho. La palabra de un gaucho vale más que un facón.» Don Claudio señala al milico que dormita junto a la carreta. «Ese precisa una lección. Midá sus pasos, no malgastes el aliento y acordate: moverte cuesta 1 AP, atacar con el facón cuesta 2.»",
+    choices: [
+      {
+        text: "«A las armas, entonces.»",
+        tag: "EMPEZAR COMBATE",
+        type: "normal",
+        action: () => { closeDialogue(); tutorialDialogueDone(); }
+      }
+    ]
+  },
+  tutorial_dice_fail: {
+    speaker: "Don Claudio",
+    role: "Pulpero de la frontera",
+    avatar: "🍺",
+    text: "«Le faltó labia, pero no coraje. En la frontera un fallo no termina la historia: abre otro camino.» Don Claudio señala al milico que dormita junto a la carreta. «Ese precisa una lección. Moverte cuesta 1 AP; atacar con el facón, 2.»",
+    choices: [
+      {
+        text: "«Entonces que la lección sea con el facón.»",
+        tag: "EMPEZAR COMBATE",
+        type: "normal",
+        action: () => { closeDialogue(); tutorialDialogueDone(); }
+      }
+    ]
   }
 };
 
@@ -4136,6 +5058,15 @@ function openDialogue(nodeKey) {
   if (!node) {
     addCombatLog("La pampa guarda silencio: ese diálogo no está disponible.", "normal");
     return;
+  }
+
+  if (Game.isTutorial && nodeKey === "tutorial_intro") {
+    if (tutorialInputBlocked()) return;
+    if (Game.tutorialStep === "move") {
+      showToast("Primero probá moverte: hacé click en el pasto.", "warning");
+      return;
+    }
+    tutorialSetStep("dice");
   }
 
   Game.state = "DIALOGUE";
@@ -4161,7 +5092,12 @@ function openDialogue(nodeKey) {
     btn.innerHTML = `<span class="check-tag ${choice.type}">[${choice.tag}]</span> <span>${choice.text}</span>`;
     btn.onclick = () => {
       audio.playChord([220, 277.18, 329.63]);
-      
+
+      // Elegir el filo antes que la palabra siempre deja una marca en Cruz.
+      if (choice.type === "intimidacion" && choice.tag !== "INTIMIDACIÓN EXITOSA") {
+        adjustRemorse(4, "Elegiste imponerte por la fuerza");
+      }
+
       if (choice.loyaltyBonus) {
         Game.cruzLoyalty = Math.min(100, Game.cruzLoyalty + choice.loyaltyBonus);
         addCombatLog(`<strong>Sargento Cruz aprueba tu decisión</strong> (+${choice.loyaltyBonus}% Confianza).`, "success");
@@ -4247,6 +5183,7 @@ function triggerDiceCheck(choice) {
       continueBtn.classList.remove("hidden");
       continueBtn.onclick = () => {
         modal.classList.add("hidden");
+        if (Game.isTutorial && Game.tutorialStep === "dice") tutorialSetStep("diceResult");
         if (isSuccess) {
           openDialogue(choice.onSuccess);
         } else {
@@ -4255,6 +5192,148 @@ function triggerDiceCheck(choice) {
       };
     }
   }, 90);
+}
+
+// -----------------------------------------------------------------------------
+// 12.b FLUJO DEL TUTORIAL JUGABLE (SIN TOCAR LA CAMPAÑA)
+// -----------------------------------------------------------------------------
+function tutorialHide() {
+  const overlay = document.getElementById("tutorial-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function tutorialInputBlocked() {
+  return ["intro", "combatIntro", "victory", "defeat"].includes(Game.tutorialStep);
+}
+
+function tutorialSetStep(stepId) {
+  if (!Game.isTutorial) return;
+  const step = TUTORIAL_STEPS.find(item => item.id === stepId);
+  if (!step) return;
+
+  Game.tutorialStep = stepId;
+
+  const overlay = document.getElementById("tutorial-overlay");
+  const badge = document.getElementById("tutorial-step-badge");
+  const title = document.getElementById("tutorial-title");
+  const text = document.getElementById("tutorial-text");
+  const hint = document.getElementById("tutorial-hint");
+  const continueBtn = document.getElementById("btn-tutorial-continue");
+  const progress = document.getElementById("tutorial-progress-fill");
+
+  if (overlay) overlay.classList.remove("hidden");
+  if (badge) badge.innerText = step.badge;
+  if (title) title.innerText = step.title;
+  if (text) text.innerText = step.text;
+  if (hint) hint.innerText = step.hint || "";
+  if (progress) progress.style.width = `${step.progress}%`;
+
+  if (continueBtn) {
+    continueBtn.classList.toggle("hidden", !step.cta);
+    if (step.cta) {
+      continueBtn.innerText = step.cta;
+      continueBtn.onclick = () => tutorialHandleContinue(step);
+    }
+  }
+}
+
+function tutorialHandleContinue(step) {
+  audio.init();
+  audio.playChord([220, 277.18, 329.63]);
+
+  if (step.action === "next") tutorialSetStep("move");
+  else if (step.action === "combat") tutorialStartCombat();
+  else if (step.action === "exit") exitTutorial();
+  else if (step.action === "restart") startTutorial();
+}
+
+function startTutorial() {
+  const inGame = document.getElementById("game-view").classList.contains("active");
+  if (inGame && !Game.isTutorial) {
+    const proceed = window.confirm("Para jugar el tutorial vas a salir de la partida actual. El avance guardado de la campaña no se borra. ¿Querés continuar?");
+    if (!proceed) return;
+  }
+
+  audio.init();
+  audio.playChord([196, 246.94, 392.00]);
+  closeGuideModal();
+  closeOptionsModal();
+  resetGameState({ clearStorage: false });
+  Game.isTutorial = true;
+  showGameView();
+  loadLevel(0, TUTORIAL_LEVEL);
+  tutorialSetStep("intro");
+  showToast("Tutorial jugable: tu campaña guardada queda intacta.", "success");
+}
+
+function exitTutorial() {
+  Game.isTutorial = false;
+  Game.tutorialStep = null;
+  tutorialHide();
+  resetGameState({ clearStorage: false });
+  document.getElementById("game-view").classList.remove("active");
+  document.getElementById("title-screen").classList.add("active");
+  updateContinueButton();
+}
+
+function tutorialDialogueDone() {
+  if (!Game.isTutorial) return;
+  tutorialSetStep("combatIntro");
+}
+
+function tutorialStartCombat() {
+  if (!Game.isTutorial || Game.state === "COMBAT") return;
+
+  const enemy = Game.levelUnits.find(unit => unit.id === "tutorial_soldado");
+  if (enemy) {
+    enemy.isDead = false;
+    enemy.hp = enemy.maxHp;
+    enemy.statuses = {};
+    enemy.clearTransientStates();
+    enemy.moveTo(11, 9);
+    enemy.updateOverlay();
+    enemy.attachOverlay();
+  }
+
+  [fierroUnit, cruzUnit].forEach(unit => {
+    unit.isDead = false;
+    unit.hp = unit.maxHp;
+    unit.statuses = {};
+    unit.clearTransientStates();
+    unit.moveTo(unit === fierroUnit ? 10 : 9, unit === fierroUnit ? 9 : 10);
+  });
+
+  Game.defeatShown = false;
+  startCombatSequence();
+  selectAction("facon");
+  tutorialSetStep("attack");
+  addCombatLog("Tutorial: elegí Facón [2] y hacé click sobre el milico de práctica.", "success");
+}
+
+function tutorialVictory(reason) {
+  Game.combatLock = true;
+  Game.state = "TUTORIAL";
+  document.getElementById("combat-banner").classList.add("hidden");
+  document.getElementById("turn-order-bar").classList.add("hidden");
+  document.getElementById("btn-end-turn").disabled = true;
+  const badge = document.getElementById("mode-badge");
+  badge.innerText = "TUTORIAL COMPLETADO";
+  badge.style.color = "#2ecc71";
+  addCombatLog(`<strong>${reason}.</strong> La lección está completa.`, "success");
+  showToast("¡Tutorial completado! Tu campaña sigue intacta.", "success");
+  audio.playLevelUp();
+  updateHUD();
+  updateObjectiveUI();
+  tutorialSetStep("victory");
+}
+
+function tutorialDefeat() {
+  Game.combatLock = true;
+  Game.state = "TUTORIAL";
+  document.getElementById("combat-banner").classList.add("hidden");
+  document.getElementById("turn-order-bar").classList.add("hidden");
+  document.getElementById("btn-end-turn").disabled = true;
+  tutorialSetStep("defeat");
 }
 
 // -----------------------------------------------------------------------------
@@ -4380,6 +5459,7 @@ function readSave() {
 
 function clearSave() {
   try {
+    if (Game.isTutorial) return;
     localStorage.removeItem(SAVE_KEY);
   } catch (error) {
     console.warn("No se pudo borrar la partida guardada.", error);
@@ -4388,6 +5468,9 @@ function clearSave() {
 }
 
 function saveGame(levelToResume = Game.currentLevel) {
+  // El tutorial es una lección aparte: nunca debe pisar la campaña guardada.
+  if (Game.isTutorial) return;
+
   const data = {
     version: 2,
     savedAt: Date.now(),
@@ -4434,6 +5517,371 @@ function updateContinueButton() {
   button.innerHTML = `<span class="icon">🐎</span> CONTINUAR · CAP. ${romanNumeral(level)}`;
 }
 
+// -----------------------------------------------------------------------------
+// 13.c MAPA DE LA TRAVESÍA: DÓNDE OCURRE CADA CAPÍTULO
+// -----------------------------------------------------------------------------
+let chapterMapSelectedChapter = null;
+
+function getChapterMapStatus() {
+  const gameView = document.getElementById("game-view");
+  const inGame = gameView && gameView.classList.contains("active") && !Game.isTutorial;
+  const save = readSave();
+  let currentLevel = 1;
+  let completed = [];
+
+  if (inGame) {
+    currentLevel = clamp(Number(Game.currentLevel) || 1, 1, 8);
+    completed = [...Game.progression.completedChapters];
+    if (save && save.progression && Array.isArray(save.progression.completedChapters)) {
+      completed.push(...save.progression.completedChapters);
+    }
+    if (save) {
+      currentLevel = Math.max(currentLevel, clamp(Number(save.currentLevel) || 1, 1, 8));
+    }
+  } else if (save) {
+    currentLevel = clamp(Number(save.currentLevel) || 1, 1, 8);
+    completed = save.progression && Array.isArray(save.progression.completedChapters)
+      ? save.progression.completedChapters
+      : [];
+  }
+
+  return {
+    currentLevel,
+    completed: new Set(completed.map(Number))
+  };
+}
+
+function chapterStatusFor(level, state) {
+  if (state.completed.has(level) || level < state.currentLevel) return "completed";
+  if (level === state.currentLevel) return "current";
+  return "locked";
+}
+
+function formatEndingDate(timestamp) {
+  const date = new Date(Number(timestamp) || 0);
+  if (Number.isNaN(date.getTime()) || !timestamp) return "fecha desconocida";
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function readEndingRecord() {
+  const empty = { unlocked: {}, playthroughs: 0, lastEnding: null, history: [] };
+  try {
+    const raw = localStorage.getItem(ENDINGS_KEY);
+    if (!raw) return empty;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return empty;
+
+    const unlocked = {};
+    if (data.unlocked && typeof data.unlocked === "object") {
+      Object.keys(data.unlocked).forEach(key => {
+        if (!ENDING_CATALOG[key]) return;
+        const value = data.unlocked[key];
+        if (value && typeof value === "object") {
+          const first = Number(value.first) || Number(value.last) || 0;
+          unlocked[key] = {
+            first,
+            last: Number(value.last) || first,
+            times: Math.max(1, Number(value.times) || 1)
+          };
+        } else {
+          const stamp = Number(value) || 0;
+          unlocked[key] = { first: stamp, last: stamp, times: 1 };
+        }
+      });
+    }
+
+    const history = Array.isArray(data.history)
+      ? data.history
+        .filter(entry => entry && ENDING_CATALOG[entry.ending])
+        .slice(0, 30)
+        .map(entry => ({
+          ending: entry.ending,
+          date: Number(entry.date) || 0,
+          chapter: clamp(Number(entry.chapter) || 1, 1, Object.keys(LEVELS).length),
+          remorse: clamp(Number(entry.remorse) || 0, 0, 100),
+          route: typeof entry.route === "string" ? entry.route : "Camino canónico",
+          level: clamp(Number(entry.level) || 1, 1, 10)
+        }))
+      : [];
+
+    return {
+      unlocked,
+      playthroughs: Math.max(0, Number(data.playthroughs) || 0),
+      lastEnding: typeof data.lastEnding === "string" && ENDING_CATALOG[data.lastEnding]
+        ? data.lastEnding
+        : null,
+      history
+    };
+  } catch (error) {
+    console.warn("No se pudo leer el registro de finales.", error);
+    return empty;
+  }
+}
+
+function writeEndingRecord(record) {
+  try {
+    localStorage.setItem(ENDINGS_KEY, JSON.stringify(record));
+  } catch (error) {
+    console.warn("No se pudo guardar el registro de finales.", error);
+  }
+}
+
+function unlockEnding(endingType, meta = {}) {
+  if (!ENDING_CATALOG[endingType]) return false;
+  const record = readEndingRecord();
+  const existing = record.unlocked[endingType];
+  const now = Date.now();
+  const isNew = !existing;
+
+  record.unlocked[endingType] = {
+    first: existing ? existing.first : now,
+    last: now,
+    times: (existing ? existing.times : 0) + 1
+  };
+  record.playthroughs += 1;
+  record.lastEnding = endingType;
+  record.history = [{
+    ending: endingType,
+    date: now,
+    chapter: clamp(Number(meta.chapter) || Game.currentLevel || 1, 1, Object.keys(LEVELS).length),
+    remorse: clamp(Number(meta.remorse) || 0, 0, 100),
+    route: meta.route || getMoralityRoute(),
+    level: clamp(Number(meta.level) || Game.progression.level || 1, 1, 10)
+  }, ...(record.history || [])].slice(0, 30);
+
+  writeEndingRecord(record);
+  updateEndingsBadges();
+  return isNew;
+}
+
+function getMoralityRoute() {
+  const morality = Game.morality || {};
+  if (morality.cruzSacrificed) return "Sacrificio";
+  if ((morality.diplomaticWins || 0) >= 2) return "Diálogo";
+  if ((morality.intimidations || 0) >= 2) return "Intimidación";
+  if ((morality.combatWins || 0) >= 2) return "Violencia";
+  if (morality.payadaWon) return "Payada";
+  return "Camino canónico";
+}
+
+function getEndingCount() {
+  return Object.keys(readEndingRecord().unlocked).length;
+}
+
+function updateEndingsBadges() {
+  const count = getEndingCount();
+  const total = ENDING_ORDER.length;
+  const menuCount = document.getElementById("menu-endings-count");
+  if (menuCount) menuCount.innerText = `${count}/${total}`;
+  const hudButton = document.getElementById("btn-open-endings-map-hud");
+  if (hudButton) hudButton.title = `Mapa de finales: ${count} de ${total} descubiertos`;
+  const modal = document.getElementById("endings-map-modal");
+  if (modal && !modal.classList.contains("hidden")) renderEndingsMap();
+}
+
+function renderChapterMap() {
+  const frontierNodes = document.getElementById("frontier-nodes");
+  if (!frontierNodes) return;
+
+  const state = getChapterMapStatus();
+  const chapterIds = Object.keys(CHAPTER_GEO).map(Number).sort((a, b) => a - b);
+  const selected = clamp(
+    Number(chapterMapSelectedChapter) || state.currentLevel,
+    1,
+    chapterIds.length
+  );
+  chapterMapSelectedChapter = selected;
+
+  const routeLine = document.getElementById("frontier-route-line");
+  if (routeLine) {
+    routeLine.setAttribute(
+      "points",
+      chapterIds.map(id => `${CHAPTER_GEO[id].mapX},${CHAPTER_GEO[id].mapY}`).join(" ")
+    );
+  }
+
+  let completedCount = 0;
+  frontierNodes.innerHTML = chapterIds.map(id => {
+    const chapter = CHAPTER_GEO[id];
+    const status = chapterStatusFor(id, state);
+    if (status === "completed") completedCount++;
+    return `
+      <button type="button" class="frontier-node ${status} ${id === selected ? "selected" : ""}"
+        data-chapter="${id}" style="left:${chapter.mapX}%;top:${chapter.mapY}%;"
+        title="${chapter.title} · ${chapter.zone}"
+        aria-label="${chapter.chapterTitle}, ${chapter.zone}">
+        <span class="frontier-node-pin">${chapter.icon}</span>
+        <span class="frontier-node-num">${chapter.roman}</span>
+        <span class="frontier-node-label">${chapter.short}</span>
+      </button>
+    `;
+  }).join("");
+
+  frontierNodes.querySelectorAll(".frontier-node").forEach(button => {
+    button.onclick = () => {
+      chapterMapSelectedChapter = Number(button.dataset.chapter);
+      renderChapterMap();
+    };
+  });
+
+  const progress = document.getElementById("chapter-map-progress");
+  if (progress) progress.innerText = `${completedCount} / ${chapterIds.length} capítulos`;
+
+  const chapter = CHAPTER_GEO[selected];
+  const status = chapterStatusFor(selected, state);
+  const statusLabel = status === "completed"
+    ? "COMPLETADO"
+    : status === "current"
+      ? "CAPÍTULO ACTUAL"
+      : "POR RECORRER";
+  const info = document.getElementById("chapter-map-info");
+  if (info) {
+    info.innerHTML = `
+      <div class="cm-info-head">
+        <span class="cm-info-icon">${chapter.icon}</span>
+        <div class="cm-info-title">
+          <span class="cm-info-kicker">CAPÍTULO ${chapter.roman} · ${chapter.zone.toUpperCase()}</span>
+          <h4>${chapter.title}</h4>
+          <span class="cm-info-status ${status}">${statusLabel}</span>
+        </div>
+      </div>
+      <p class="cm-info-detail">${chapter.detail}</p>
+      <div class="cm-info-meta">
+        <span>📍 ${chapter.province}</span>
+        <span>🧭 ${chapter.subzone}</span>
+      </div>
+    `;
+  }
+}
+
+function openChapterMap() {
+  closeOptionsModal();
+  closeGuideModal();
+  closeEndingsMap();
+  chapterMapSelectedChapter = null;
+  renderChapterMap();
+  const modal = document.getElementById("chapter-map-modal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeChapterMap() {
+  const modal = document.getElementById("chapter-map-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function renderEndingsMap() {
+  const trail = document.getElementById("endings-map-trail");
+  const cards = document.getElementById("endings-map-cards");
+  if (!trail || !cards) return;
+
+  const record = readEndingRecord();
+  const unlockedCount = ENDING_ORDER.filter(id => record.unlocked[id]).length;
+  const total = ENDING_ORDER.length;
+
+  const countLabel = document.getElementById("endings-map-count");
+  if (countLabel) countLabel.innerText = `${unlockedCount} de ${total} descubiertos`;
+  const fill = document.getElementById("endings-progress-fill");
+  if (fill) fill.style.width = `${(unlockedCount / total) * 100}%`;
+
+  trail.innerHTML = ENDING_ORDER.map(id => {
+    const ending = ENDING_CATALOG[id];
+    const isUnlocked = Boolean(record.unlocked[id]);
+    return `
+      <div class="ending-trail-node ${isUnlocked ? "unlocked" : "locked"}"
+        style="--ending-color:${ending.color}">
+        <span class="ending-trail-icon">${isUnlocked ? ending.icon : "🔒"}</span>
+        <span class="ending-trail-label">FINAL ${ending.roman}</span>
+      </div>
+    `;
+  }).join("");
+
+  const summary = document.getElementById("endings-map-summary");
+  if (summary) {
+    if (unlockedCount === 0) {
+      summary.innerText = "Todavía no descubriste ningún final. La primera huella en este mapa está por escribirse.";
+    } else if (unlockedCount === total) {
+      summary.innerText = "¡Completaste el atlas! Recorriste todas las rutas posibles de la frontera.";
+    } else {
+      summary.innerText = `Ya obtuviste ${unlockedCount} de ${total} destinos. Te faltan ${total - unlockedCount} rutas por descubrir.`;
+    }
+  }
+
+  cards.innerHTML = ENDING_ORDER.map(id => {
+    const ending = ENDING_CATALOG[id];
+    const entry = record.unlocked[id];
+    const isUnlocked = Boolean(entry);
+    const isDefeat = ending.type === "defeat";
+    return `
+      <article class="ending-card ${isUnlocked ? "unlocked" : "locked"} ${isDefeat ? "defeat" : "final"}"
+        style="--ending-color:${ending.color}">
+        <div class="ending-card-head">
+          <span class="ending-card-number">${isDefeat ? "DERROTA" : "FINAL"} ${ending.roman}</span>
+          <span class="ending-card-status">${isUnlocked ? "OBTENIDO" : "PENDIENTE"}</span>
+        </div>
+        <div class="ending-card-icon">${isUnlocked ? ending.icon : "🔒"}</div>
+        <h4>${isUnlocked ? ending.title : "Final no descubierto"}</h4>
+        <p class="ending-card-subtitle">${isUnlocked ? ending.subtitle : "Una ruta que todavía no recorriste"}</p>
+        <p class="ending-card-verse">${isUnlocked ? ending.verse : `Pista: ${ending.hint}`}</p>
+        <div class="ending-card-meta">
+          <span>📍 ${ending.place}</span>
+          ${isUnlocked ? `<span>🗓️ ${formatEndingDate(entry.first)}</span>` : ""}
+          ${isUnlocked && entry.times > 1 ? `<span>🔁 ${entry.times} veces</span>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  renderEndingsHistory(record);
+}
+
+function renderEndingsHistory(record) {
+  const list = document.getElementById("endings-history-list");
+  const section = document.getElementById("endings-history");
+  if (!list) return;
+
+  const history = (record && record.history) || [];
+  if (section) section.classList.toggle("empty", history.length === 0);
+
+  if (!history.length) {
+    list.innerHTML = `<li class="endings-history-empty">Todavía no cerraste ninguna travesía. La primera ruta se anotará acá cuando llegues a un final o caigas en la frontera.</li>`;
+    return;
+  }
+
+  list.innerHTML = history.slice(0, 10).map(entry => {
+    const ending = ENDING_CATALOG[entry.ending] || {};
+    const isDefeat = ending.type === "defeat";
+    const remorse = clamp(Number(entry.remorse) || 0, 0, 100);
+    return `
+      <li class="endings-history-item ${isDefeat ? "defeat" : "final"}" style="--ending-color:${ending.color || "#c89d4f"}">
+        <span class="endings-history-icon">${ending.icon || "❖"}</span>
+        <div class="endings-history-body">
+          <strong>${ending.subtitle || ending.title || entry.ending}</strong>
+          <span class="endings-history-meta">
+            Capítulo ${romanNumeral(entry.chapter)} · Nivel ${entry.level} · Ruta: ${entry.route}
+          </span>
+          <span class="endings-history-meta">
+            Remordimiento ${remorse}% · ${formatEndingDate(entry.date)}
+          </span>
+        </div>
+      </li>
+    `;
+  }).join("");
+}
+
+function openEndingsMap() {
+  closeOptionsModal();
+  closeGuideModal();
+  closeChapterMap();
+  renderEndingsMap();
+  const modal = document.getElementById("endings-map-modal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeEndingsMap() {
+  const modal = document.getElementById("endings-map-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
 function showGameView() {
   document.getElementById("title-screen").classList.remove("active");
   document.getElementById("game-view").classList.add("active");
@@ -4443,9 +5891,13 @@ function resetGameState(options = {}) {
   if (options.clearStorage !== false) clearSave();
 
   Game.state = "TITLE";
+  Game.isTutorial = false;
+  Game.tutorialStep = null;
   Game.currentLevel = 1;
   Game.activeUnitIndex = 0;
   Game.selectedAction = "move";
+  Game.explorationUnit = "fierro";
+  Game.cruzFollowing = true;
   Game.hoverCell = { x: -1, y: -1 };
   Game.hoverInteractable = null;
   Game.combatQueue = [];
@@ -4467,6 +5919,8 @@ function resetGameState(options = {}) {
   Game.levelCamera = null;
   Game.levelCompletionHandled = false;
   Game.defeatShown = false;
+  Game.lastResultReason = null;
+  Game.cruzLowWarned = false;
   Game.lastCombatResolved = false;
 
   Game.inventory = { ammo: 6, drinks: 2, bandages: 2 };
@@ -4490,7 +5944,8 @@ function resetGameState(options = {}) {
     savedPicardia: false,
     foundLevyOrders: false,
     payadaWon: false,
-    cruzSacrificed: false
+    cruzSacrificed: false,
+    remorse: 0
   };
   Game.stats = {
     fuerza: 15,
@@ -4539,7 +5994,7 @@ function resetGameState(options = {}) {
   const log = document.getElementById("log-entries");
   if (log) log.innerHTML = "";
 
-  ["result-modal", "travel-map-modal", "dice-roll-modal", "dialogue-overlay", "character-sheet-modal", "guide-modal"].forEach(id => {
+  ["result-modal", "travel-map-modal", "dice-roll-modal", "dialogue-overlay", "character-sheet-modal", "guide-modal", "tutorial-overlay", "chapter-map-modal", "endings-map-modal", "chapter-briefing-modal", "chapter-victory-modal", "credits-modal", "credits-roll-modal"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add("hidden");
   });
@@ -4611,19 +6066,84 @@ function onLevelCompleted() {
   if (Game.levelCompletionHandled) return;
   Game.levelCompletionHandled = true;
 
+  // Cerrar el capítulo con Cruz al borde de la muerte también pesa en la bitácora.
+  if (!cruzUnit.isDead && cruzUnit.hp > 0 && cruzUnit.hp / cruzUnit.maxHp < 0.3) {
+    adjustRemorse(8, "Cruz sigue en pie, pero apenas");
+    showToast("Cruz quedó al borde de la muerte. Su hermandad no se recupora tan fácil.", "warning");
+  }
+
   awardChapterProgress();
   audio.playChord([261.63, 329.63, 392.00, 523.25]);
   Game.combatLock = true;
 
   const totalLevels = Object.keys(LEVELS).length;
-  if (Game.currentLevel >= totalLevels) {
+  const isLastChapter = Game.currentLevel >= totalLevels;
+  if (!isLastChapter) saveGame(Game.currentLevel + 1);
+
+  document.getElementById("combat-banner").classList.add("hidden");
+  document.getElementById("turn-order-bar").classList.add("hidden");
+  document.getElementById("btn-end-turn").disabled = true;
+  document.getElementById("mode-badge").innerText = "CAPÍTULO COMPLETADO";
+  document.getElementById("mode-badge").style.color = "#2ecc71";
+  updateObjectiveUI();
+
+  Game.state = "VICTORY";
+  showChapterVictory(isLastChapter, totalLevels);
+}
+
+function showChapterVictory(isLastChapter, totalLevels) {
+  const modal = document.getElementById("chapter-victory-modal");
+  if (!modal) {
+    continueAfterVictory(isLastChapter);
+    return;
+  }
+
+  const chapter = CHAPTER_BRIEFINGS[Game.currentLevel] || {};
+  const levelData = Game.activeLevelData;
+  const progression = Game.progression;
+
+  document.getElementById("victory-kicker").innerText = isLastChapter
+    ? "CAMPAÑA COMPLETADA"
+    : `CAPÍTULO ${romanNumeral(Game.currentLevel)} COMPLETADO`;
+  document.getElementById("victory-title").innerText = isLastChapter
+    ? "EL ÚLTIMO CANTO HA SIDO CANTADO"
+    : "EL CAMINO SIGUE";
+  document.getElementById("victory-subtitle").innerText = levelData
+    ? getChapterDisplayTitle(levelData)
+    : "";
+  document.getElementById("victory-verse").innerText = chapter.victory
+    || "La pampa guarda silencio y el camino se abre otra vez.";
+
+  document.getElementById("victory-stats").innerHTML = `
+    <div class="epilogue-stat-item"><strong>Capítulo superado:</strong> ${romanNumeral(Game.currentLevel)} de ${romanNumeral(totalLevels)}</div>
+    <div class="epilogue-stat-item"><strong>Nivel de Fierro:</strong> ${progression.level}</div>
+    <div class="epilogue-stat-item"><strong>Experiencia:</strong> ${progression.xp} / ${progression.nextXp} EXP</div>
+    <div class="epilogue-stat-item"><strong>Piezas de metal:</strong> ${progression.scrap}</div>
+    <div class="epilogue-stat-item"><strong>Salud final:</strong> ${fierroUnit.hp} / ${fierroUnit.maxHp} HP</div>
+    <div class="epilogue-stat-item"><strong>Lealtad de Cruz:</strong> ${Game.cruzLoyalty}%</div>
+  `;
+
+  const continueBtn = document.getElementById("btn-victory-continue");
+  if (continueBtn) {
+    continueBtn.innerText = isLastChapter ? "Ver el final de la travesía" : "Ensillar y seguir";
+    continueBtn.onclick = () => {
+      modal.classList.add("hidden");
+      continueAfterVictory(isLastChapter);
+    };
+  }
+
+  modal.classList.remove("hidden");
+}
+
+function continueAfterVictory(isLastChapter) {
+  if (isLastChapter) {
     clearSave();
     evaluateFinalEnding();
     return;
   }
 
   const nextLvl = Game.currentLevel + 1;
-  saveGame(nextLvl);
+  const totalLevels = Object.keys(LEVELS).length;
 
   // Abrir Modal de Mapa de Viaje Pampeano
   Game.state = "TRAVEL_MAP";
@@ -4696,6 +6216,12 @@ function triggerEpilogue(endingType) {
   Game.state = "EPILOGUE";
   Game.combatLock = true;
   clearSave();
+  unlockEnding(endingType, {
+    chapter: Object.keys(LEVELS).length,
+    remorse: Game.morality.remorse,
+    route: getMoralityRoute(),
+    level: Game.progression.level
+  });
 
   const modal = document.getElementById("result-modal");
   const tag = document.getElementById("epilogue-ending-tag");
@@ -4704,42 +6230,46 @@ function triggerEpilogue(endingType) {
   const narrative = document.getElementById("result-narrative");
   const summary = document.getElementById("result-summary");
 
+  const totalEndings = ENDING_ORDER.length;
+  const catalogEntry = ENDING_CATALOG[endingType] || { roman: "I", subtitle: "" };
+  const tagPrefix = `${catalogEntry.type === "defeat" ? "DERROTA" : "FINAL"} ${catalogEntry.roman} DE ${totalEndings}`;
+
   document.getElementById("combat-banner").classList.add("hidden");
   document.getElementById("turn-order-bar").classList.add("hidden");
   document.getElementById("btn-end-turn").disabled = true;
 
   if (endingType === "desert_freedom") {
-    tag.innerText = "FINAL CANÓNICO 1 DE 6: LA HUIDA AL DESIERTO LIBRE";
+    tag.innerText = `${tagPrefix} · LA HUIDA AL DESIERTO LIBRE`;
     title.innerText = "CRUZANDO LA ÚLTIMA FRONTERA";
     title.style.color = "#f39c12";
     verse.innerText = "«Y siguiendo el fiel rumbo, / que aquel rumbo les marcaba, / entraron en el desierto, / donde nadie los hallaba.»";
     narrative.innerText = "Después de cruzar el cañadón, el fortín y el salitral, Fierro y Cruz recuperan la tapera. Pero la justicia sigue obedeciendo a los poderosos: al caer la noche, ensillan de nuevo y se internan en el desierto pampeano, libres e indómitos.";
   } else if (endingType === "diplomatic") {
-    tag.innerText = "FINAL ALTERNATIVO 2 DE 6: EL PACTO DE LA LEY CRIOLLA";
+    tag.innerText = `${tagPrefix} · EL PACTO DE LA LEY CRIOLLA`;
     title.innerText = "LA JUSTICIA DE LA PALABRA";
     title.style.color = "#2ecc71";
     verse.innerText = "«Los hermanos sean unidos, / porque ésa es la ley primera; / tengan unión verdadera / en cualquier tiempo que sea...»";
     narrative.innerText = "Con la prueba de la leva, los testimonios del pago y el apoyo de la gente, Fierro y Cruz desenmascararon a los comandantes, al escribano y a Don Evaristo. Las tierras fueron restituidas y la leva quedó bajo investigación. Mora y los peones regresaron a sus hogares con ellos.";
   } else if (endingType === "vengeance") {
-    tag.innerText = "FINAL ALTERNATIVO 3 DE 6: LA FURIA DEL FACÓN";
+    tag.innerText = `${tagPrefix} · LA FURIA DEL FACÓN`;
     title.innerText = "LEYENDA SANGRIENTA DE LA PAMPA";
     title.style.color = "#e74c3c";
     verse.innerText = "«El que pelea en la frontera / no tiene descanso ni abrigo; / donde pisa no hay amigo / ni perdón para el matrero...»";
     narrative.innerText = "El patio de la estancia quedó cubierto de humo. Fierro y Cruz recuperaron la tapera por la fuerza y se marcharon antes del amanecer. Desde entonces, sus nombres resonaron en cada fogón: temidos por los poderosos y celebrados en secreto por los gauchos alzados.";
   } else if (endingType === "sacrifice") {
-    tag.innerText = "FINAL ALTERNATIVO 4 DE 6: EL SACRIFICIO DE CRUZ";
+    tag.innerText = `${tagPrefix} · EL SACRIFICIO DE CRUZ`;
     title.innerText = "CRUZ NO CONSINTIÓ EL CRIMEN";
     title.style.color = "#3498db";
     verse.innerText = "«¡Cruz no consiente / que se cometa el delito / de matar a un valiente! / y al punto desenvainó...»";
     narrative.innerText = "En el patio de la estancia, Cruz se interpuso ante la guardia para salvar a Fierro. En su último aliento le pidió a su hermano que volviera al pago y cuidara a los suyos. Fierro cruzó solo el salitral, llevando la memoria imborrable del amigo que dio la vida por él.";
   } else if (endingType === "payada_legend") {
-    tag.innerText = "FINAL ALTERNATIVO 5 DE 6: EL CANTO QUE QUEDÓ EN LA FRONTERA";
+    tag.innerText = `${tagPrefix} · EL CANTO QUE QUEDÓ EN LA FRONTERA`;
     title.innerText = "LA VERDAD SE CANTA Y NO SE OLVIDA";
     title.style.color = "#af7ac5";
     verse.innerText = "«Y aquí me pongo a cantar / por la memoria del pago, / para que sepan los malos / que la verdad tiene estrago.»";
     narrative.innerText = "Los tres testimonios y la payada de la pulpería viajaron de fogón en fogón hasta el Fortín San Martín. Cuando Lagos cayó, ya no quedaba un solo soldado que creyera en sus papeles. Fierro colgó el facón y siguió cantando por los caminos: desde entonces, cada copla suya fue una sentencia contra los que roban la tierra y la memoria.";
   } else if (endingType === "caudillo") {
-    tag.innerText = "FINAL ALTERNATIVO 6 DE 6: EL CAUDILLO DE LOS PAGOS";
+    tag.innerText = `${tagPrefix} · EL CAUDILLO DE LOS PAGOS`;
     title.innerText = "LA FRONTERA APRENDIÓ A OBEDECER OTRA LEY";
     title.style.color = "#e67e22";
     verse.innerText = "«Los hermanos sean unidos, / y el pago será su casa; / que la fuerza de los muchos / quiebra la ley de los amos.»";
@@ -4757,35 +6287,81 @@ function triggerEpilogue(endingType) {
     <div class="epilogue-stat-item"><strong>Testimonios Reunidos:</strong> ${Game.testimonies.length} / 3</div>
     <div class="epilogue-stat-item"><strong>Payada Ganada:</strong> ${Game.morality.payadaWon ? "Sí" : "No"}</div>
     <div class="epilogue-stat-item"><strong>Picardía Rescatado:</strong> ${Game.morality.savedPicardia ? "Sí (Aliado)" : "No"}</div>
+    <div class="epilogue-stat-item"><strong>Ruta recorrida:</strong> ${getMoralityRoute()}</div>
+    <div class="epilogue-stat-item"><strong>Remordimiento:</strong> ${clamp(Number(Game.morality.remorse) || 0, 0, 100)}% · ${remorseLabel(Game.morality.remorse)}</div>
     <div class="epilogue-stat-item"><strong>Salud Final de Fierro:</strong> ${fierroUnit.hp} HP</div>
+    <div class="epilogue-stat-item"><strong>Destinos Descubiertos:</strong> ${getEndingCount()} de ${totalEndings}</div>
   `;
 
+  Game.lastResultReason = "campaign";
   modal.classList.remove("hidden");
 }
 
-function showDefeat() {
+function showDefeat(options = {}) {
   if (Game.defeatShown) return;
   Game.defeatShown = true;
+  if (Game.isTutorial) {
+    tutorialDefeat();
+    return;
+  }
+
+  const cause = options.cause === "cruz" ? "cruz" : "fierro";
+  const cruzFell = cause === "cruz";
+  const endingType = cruzFell ? "death_cruz" : "death_fierro";
+  Game.lastResultReason = cause;
+  const ending = ENDING_CATALOG[endingType];
+  const total = ENDING_ORDER.length;
+
   Game.state = "EPILOGUE";
   Game.combatLock = true;
+  unlockEnding(endingType, {
+    chapter: Game.currentLevel,
+    remorse: Game.morality.remorse,
+    route: getMoralityRoute(),
+    level: Game.progression.level
+  });
   clearSave();
 
   const modal = document.getElementById("result-modal");
   document.getElementById("combat-banner").classList.add("hidden");
   document.getElementById("turn-order-bar").classList.add("hidden");
   document.getElementById("btn-end-turn").disabled = true;
-  document.getElementById("epilogue-ending-tag").innerText = "DERROTA EN LA FRONTERA";
-  document.getElementById("result-title").innerText = "LA PAMPA NO PERDONA";
-  document.getElementById("result-title").style.color = "#c0392b";
-  document.getElementById("result-verse").innerText = "«Malo es vivir en la frontera, / pero peor es sucumbir...»";
-  document.getElementById("result-narrative").innerText = "Martín Fierro cayó antes de recuperar su hogar. Cruz siguió su rastro hasta que la frontera se cerró sobre ambos y el camino de regreso quedó sin terminar.";
+  document.getElementById("mode-badge").innerText = cruzFell ? "LA HERMANDAD SE ROMPIÓ" : "DERROTA EN LA FRONTERA";
+  document.getElementById("mode-badge").style.color = "#c0392b";
+
+  document.getElementById("epilogue-ending-tag").innerText =
+    `DERROTA ${ending.roman} DE ${total} · ${ending.subtitle.toUpperCase()}`;
+
+  const title = document.getElementById("result-title");
+  title.innerText = cruzFell ? "CRUZ NO VUELVE A CANTAR" : "LA PAMPA NO PERDONA";
+  title.style.color = cruzFell ? "#3498db" : "#c0392b";
+
+  document.getElementById("result-verse").innerText = ending.verse;
+
+  const narrative = document.getElementById("result-narrative");
+  narrative.innerText = cruzFell
+    ? `El Sargento Cruz cayó en el capítulo ${romanNumeral(Game.currentLevel)} con el facón en la mano y el nombre de Fierro en los labios. Sin su hermano, Fierro no encontró razón para cruzar otra frontera: la pampa se cerró sobre un gaucho que ya no tenía a quién volver. ${getRemorseFlavor()}`
+    : `Martín Fierro cayó en el capítulo ${romanNumeral(Game.currentLevel)} antes de recuperar su hogar. La frontera se cerró sobre su historia y el camino de regreso quedó sin terminar. ${getRemorseFlavor()}`;
+
   document.getElementById("result-summary").innerHTML = `
-    <div class="epilogue-stat-item"><strong>Capítulo alcanzado:</strong> ${Game.currentLevel} de ${Object.keys(LEVELS).length}</div>
+    <div class="epilogue-stat-item"><strong>Capítulo alcanzado:</strong> ${romanNumeral(Game.currentLevel)} de ${romanNumeral(Object.keys(LEVELS).length)}</div>
     <div class="epilogue-stat-item"><strong>Nivel de Fierro:</strong> ${Game.progression.level}</div>
-    <div class="epilogue-stat-item"><strong>Puntos de Vida:</strong> 0 HP</div>
+    <div class="epilogue-stat-item"><strong>Ruta recorrida:</strong> ${getMoralityRoute()}</div>
+    <div class="epilogue-stat-item"><strong>Remordimiento:</strong> ${Game.morality.remorse}% · ${remorseLabel(Game.morality.remorse)}</div>
+    <div class="epilogue-stat-item"><strong>Sargento Cruz:</strong> ${cruzFell ? "cayó en combate" : "sobrevivió a la caída"}</div>
+    <div class="epilogue-stat-item"><strong>Destinos descubiertos:</strong> ${getEndingCount()} de ${total}</div>
   `;
+
+  const restartBtn = document.getElementById("btn-restart");
+  if (restartBtn) {
+    restartBtn.innerText = cruzFell
+      ? "VOLVER A ENSILLAR (CRUZ MERECE OTRA SUERTE)"
+      : "JUGAR DE NUEVO (EXPLORAR OTRO FINAL)";
+  }
+
   audio.playWarning();
   modal.classList.remove("hidden");
+  openCreditsRoll({ reason: cruzFell ? "cruz" : "fierro", delay: 1400 });
 }
 
 // -----------------------------------------------------------------------------
@@ -4802,6 +6378,36 @@ function updateHUD() {
   document.getElementById("cruz-hp-text").innerText = `${cruzUnit.hp} / ${cruzUnit.maxHp}`;
   document.getElementById("cruz-ap-badge").innerText = `${cruzUnit.ap}/${cruzUnit.maxAp} AP`;
   document.getElementById("cruz-loyalty-text").innerText = `Hermandad (${Game.cruzLoyalty}%)`;
+  updateRemorseUI();
+
+  // Aviso único cuando Cruz está por caer: la travesía entera depende de él.
+  if (!Game.cruzLowWarned && !cruzUnit.isDead && cruzUnit.hp > 0 &&
+      cruzUnit.hp / cruzUnit.maxHp <= 0.3 && !Game.morality.cruzSacrificed) {
+    Game.cruzLowWarned = true;
+    addCombatLog("<strong>Cruz está al borde de la muerte.</strong> Si cae, la travesía se termina.", "crit");
+    showToast("⚠ Cruz está gravemente herido: si muere, se acaba la travesía.", "warning");
+    const cruzCard = document.getElementById("card-cruz");
+    if (cruzCard) {
+      cruzCard.classList.add("cruz-critical");
+      setTimeout(() => cruzCard.classList.remove("cruz-critical"), 2400);
+    }
+  }
+
+  const followButton = document.getElementById("cruz-follow-toggle");
+  if (followButton) {
+    followButton.classList.toggle("following", Game.cruzFollowing);
+    followButton.classList.toggle("holding", !Game.cruzFollowing);
+    followButton.setAttribute("aria-pressed", Game.cruzFollowing ? "true" : "false");
+    const followLabel = document.getElementById("cruz-follow-label");
+    if (followLabel) followLabel.innerText = Game.cruzFollowing ? "Sigue a Fierro" : "Mantener posición";
+    const followIcon = document.getElementById("cruz-follow-icon");
+    if (followIcon) followIcon.innerText = Game.cruzFollowing ? "🐾" : "🛑";
+    followButton.title = Game.cruzFollowing
+      ? "Cruz te sigue al caminar. Click para que mantenga la posición."
+      : "Cruz mantiene la posición. Click para que vuelva a seguirte.";
+  }
+
+  updateExplorationSelection();
 
   renderStatusChips(fierroUnit, "fierro-status");
   renderStatusChips(cruzUnit, "cruz-status");
@@ -4910,12 +6516,76 @@ animate();
 // -----------------------------------------------------------------------------
 // 17. EVENT LISTENERS Y CONFIGURACIÓN INICIAL
 // -----------------------------------------------------------------------------
+const fierroCardEl = document.getElementById("card-fierro");
+const cruzCardEl = document.getElementById("card-cruz");
+if (fierroCardEl) {
+  fierroCardEl.addEventListener("click", () => setExplorationUnit("fierro"));
+}
+if (cruzCardEl) {
+  cruzCardEl.addEventListener("click", () => setExplorationUnit("cruz"));
+}
+
+const cruzFollowToggle = document.getElementById("cruz-follow-toggle");
+if (cruzFollowToggle) {
+  cruzFollowToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (Game.state !== "EXPLORATION" && Game.state !== "DIALOGUE") return;
+    setCruzFollowing(!Game.cruzFollowing);
+  });
+}
+
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
 
   const key = e.key.toLowerCase();
   const tag = e.target && e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable)) return;
+  const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable);
+  const optionsElement = document.getElementById("options-modal");
+  const guideElement = document.getElementById("guide-modal");
+  const creditsElement = document.getElementById("credits-modal");
+  const creditsRollElement = document.getElementById("credits-roll-modal");
+  const optionsOpen = optionsElement && !optionsElement.classList.contains("hidden");
+  const guideOpen = guideElement && !guideElement.classList.contains("hidden");
+  const creditsOpen = creditsElement && !creditsElement.classList.contains("hidden");
+  const creditsRollOpen = creditsRollElement && !creditsRollElement.classList.contains("hidden");
+
+  if (key === "escape") {
+    if (creditsRollOpen) {
+      e.preventDefault();
+      closeCreditsRoll();
+      return;
+    }
+    if (creditsOpen) {
+      e.preventDefault();
+      closeCreditsModal();
+      return;
+    }
+    if (Game.state === "BRIEFING") {
+      e.preventDefault();
+      closeChapterBriefing();
+      return;
+    }
+    if (optionsOpen) {
+      e.preventDefault();
+      closeOptionsModal();
+      return;
+    }
+    if (guideOpen) {
+      e.preventDefault();
+      closeGuideModal();
+      return;
+    }
+  }
+
+  if (isTyping) return;
+  if (optionsOpen || guideOpen || creditsOpen || creditsRollOpen) return;
+  if (Game.state === "BRIEFING" || Game.state === "VICTORY") return;
+
+  if (key === "tab" && Game.state === "EXPLORATION") {
+    e.preventDefault();
+    setExplorationUnit(Game.explorationUnit === "fierro" ? "cruz" : "fierro");
+    return;
+  }
 
   if (key === "q") {
     e.preventDefault();
@@ -4989,11 +6659,348 @@ if (continueButton) {
   };
 }
 
-document.getElementById("btn-how-to-play").onclick = () => {
-  document.getElementById("guide-modal").classList.remove("hidden");
-};
-document.getElementById("btn-close-guide").onclick = () => {
-  document.getElementById("guide-modal").classList.add("hidden");
+// El tutorial está dentro de #game-view en el HTML: lo movemos a #app para
+// que también pueda abrirse desde el menú principal.
+const guideModal = document.getElementById("guide-modal");
+if (guideModal && guideModal.parentElement !== document.getElementById("app")) {
+  document.getElementById("app").appendChild(guideModal);
+}
+
+const optionsModal = document.getElementById("options-modal");
+
+function applyAudioSettings() {
+  audio.setVolume(gameSettings.volume / 100);
+  audio.setEnabled(!gameSettings.muted);
+  const soundIcon = document.getElementById("sound-icon");
+  if (soundIcon) soundIcon.innerText = gameSettings.muted ? "🔇" : "🔊";
+  const soundButton = document.getElementById("btn-toggle-sound");
+  if (soundButton) soundButton.title = gameSettings.muted ? "Activar sonido" : "Silenciar sonido";
+}
+
+function applyGraphicsSettings() {
+  renderer.setPixelRatio(qualityPixelRatio());
+}
+
+function applyInterfaceSettings() {
+  const hint = document.getElementById("camera-hint");
+  if (hint) hint.style.display = gameSettings.showHints ? "" : "none";
+}
+
+function applyCameraSettings() {
+  const sensitivity = gameSettings.cameraSensitivity / 100;
+  if (controls) {
+    controls.rotateSpeed = 0.9 * sensitivity;
+    controls.zoomSpeed = 0.9 * sensitivity;
+  }
+}
+
+function applyGameSettings() {
+  applyAudioSettings();
+  applyGraphicsSettings();
+  applyInterfaceSettings();
+  applyCameraSettings();
+}
+
+function updateOptionsLabels() {
+  const volumeValue = document.getElementById("opt-volume-value");
+  const sensitivityValue = document.getElementById("opt-sensitivity-value");
+  if (volumeValue) volumeValue.innerText = `${gameSettings.volume}%`;
+  if (sensitivityValue) sensitivityValue.innerText = `${gameSettings.cameraSensitivity}%`;
+}
+
+function syncOptionsUI() {
+  const volume = document.getElementById("opt-volume");
+  const muted = document.getElementById("opt-muted");
+  const sensitivity = document.getElementById("opt-sensitivity");
+  const hints = document.getElementById("opt-hints");
+  const quality = document.getElementById("opt-quality");
+  if (volume) volume.value = gameSettings.volume;
+  if (muted) muted.checked = gameSettings.muted;
+  if (sensitivity) sensitivity.value = gameSettings.cameraSensitivity;
+  if (hints) hints.checked = gameSettings.showHints;
+  if (quality) quality.value = gameSettings.quality;
+  updateOptionsLabels();
+}
+
+function openGuideModal() {
+  closeOptionsModal();
+  if (guideModal) guideModal.classList.remove("hidden");
+}
+
+function closeGuideModal() {
+  if (guideModal) guideModal.classList.add("hidden");
+}
+
+function openOptionsModal() {
+  syncOptionsUI();
+  if (optionsModal) optionsModal.classList.remove("hidden");
+}
+
+function closeOptionsModal() {
+  if (optionsModal) optionsModal.classList.add("hidden");
+}
+
+function openCreditsModal() {
+  closeOptionsModal();
+  const modal = document.getElementById("credits-modal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeCreditsModal() {
+  const modal = document.getElementById("credits-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+// -----------------------------------------------------------------------------
+// 14.b ROLLO DE CRÉDITOS: SE PROYECTA AL MORIR O AL CERRAR LA CAMPAÑA
+// -----------------------------------------------------------------------------
+let creditsRollTimer = null;
+let creditsRollStartTimer = null;
+
+function buildCreditsRoll(reason) {
+  const total = ENDING_ORDER.length;
+  const unlocked = getEndingCount();
+  const route = getMoralityRoute();
+  const remorse = clamp(Number(Game.morality.remorse) || 0, 0, 100);
+  const crossline = reason === "cruz"
+    ? "Cruz cayó primero. La pampa se quedó con los dos."
+    : reason === "fierro"
+      ? "Fierro cayó con el facón en la mano y el pago en la memoria."
+      : "La travesía llegó a su último fogón.";
+
+  const blocks = [
+    { kind: "title", text: "MARTÍN FIERRO", sub: "Entre el Fuego y la Pampa" },
+    { kind: "quote", text: "«Aquí me pongo a cantar, / al compás de la vigüela...»" },
+    { kind: "kicker", text: "OBRA ORIGINAL" },
+    { kind: "role", role: "Martín Fierro · La Ida y La Vuelta", name: "José Hernández · 1872" },
+    { kind: "role", role: "Concepto original", name: "López Galarza, Domicolo & Yoon" },
+    { kind: "kicker", text: "ADAPTACIÓN INTERACTIVA 3D · 2026" },
+    { kind: "role", role: "Diseño, narrativa y sistemas tácticos", name: "Equipo de «Martín Fierro: Entre el Fuego y la Pampa»" },
+    { kind: "role", role: "Dirección de arte", name: "Estética fierropampa: papel, tinta, rojo y oro" },
+    { kind: "role", role: "Voces de la pampa", name: "Fierro, Cruz, Mora, Don Claudio y la guardia de frontera" },
+    { kind: "kicker", text: "MOTOR Y TECNOLOGÍA" },
+    { kind: "role", role: "Three.js", name: "Licencia MIT · OrbitControls, GLTFLoader y SkeletonUtils" },
+    { kind: "role", role: "Tipografía", name: "Manus CC0" },
+    { kind: "kicker", text: "ESTA TRAVESÍA" },
+    { kind: "role", role: causeLabel(reason), name: crossline },
+    { kind: "role", role: "Ruta recorrida", name: route },
+    { kind: "role", role: "Remordimiento final", name: `${remorse}% · ${remorseLabel(remorse)}` },
+    { kind: "role", role: "Destinos descubiertos", name: `${unlocked} de ${total}` },
+    { kind: "kicker", text: "GRACIAS POR JUGAR" },
+    { kind: "quote", text: "«Los hermanos sean unidos, / porque ésa es la ley primera.»" }
+  ];
+
+  return blocks.map(block => {
+    if (block.kind === "title") {
+      return `<div class="credits-roll-block credits-roll-title">
+        <h2>${block.text}</h2><p>${block.sub}</p></div>`;
+    }
+    if (block.kind === "quote") {
+      return `<div class="credits-roll-block credits-roll-quote"><p>${block.text}</p></div>`;
+    }
+    if (block.kind === "kicker") {
+      return `<div class="credits-roll-block credits-roll-kicker"><span>${block.text}</span></div>`;
+    }
+    return `<div class="credits-roll-block credits-roll-role">
+      <span class="credits-roll-role-name">${block.role}</span>
+      <span class="credits-roll-role-value">${block.name}</span>
+    </div>`;
+  }).join("");
+}
+
+function causeLabel(reason) {
+  if (reason === "cruz") return "La caída de Cruz";
+  if (reason === "fierro") return "La caída de Fierro";
+  return "Final de la campaña";
+}
+
+function openCreditsRoll(options = {}) {
+  const delay = Math.max(0, Number(options.delay) || 0);
+  if (creditsRollStartTimer) {
+    clearTimeout(creditsRollStartTimer);
+    creditsRollStartTimer = null;
+  }
+
+  const start = () => {
+    const modal = document.getElementById("credits-roll-modal");
+    const track = document.getElementById("credits-roll-track");
+    if (!modal || !track) return;
+
+    const reason = options.reason || "campaign";
+    track.innerHTML = buildCreditsRoll(reason);
+    modal.classList.remove("hidden");
+    modal.classList.toggle("credits-roll-defeat", reason === "cruz" || reason === "fierro");
+
+    // Reinicia la animación y ajusta la duración al volumen de texto.
+    const blocks = track.children.length;
+    const duration = clamp(22 + blocks * 1.6, 26, 70);
+    track.style.animation = "none";
+    void track.offsetWidth;
+    track.style.setProperty("--roll-duration", `${duration}s`);
+    track.style.animation = "";
+
+    if (creditsRollTimer) clearTimeout(creditsRollTimer);
+    creditsRollTimer = setTimeout(() => closeCreditsRoll(), duration * 1000 + 400);
+  };
+
+  if (delay > 0) creditsRollStartTimer = setTimeout(start, delay);
+  else start();
+}
+
+function closeCreditsRoll() {
+  if (creditsRollTimer) {
+    clearTimeout(creditsRollTimer);
+    creditsRollTimer = null;
+  }
+  if (creditsRollStartTimer) {
+    clearTimeout(creditsRollStartTimer);
+    creditsRollStartTimer = null;
+  }
+  const modal = document.getElementById("credits-roll-modal");
+  if (modal) modal.classList.add("hidden");
+  const track = document.getElementById("credits-roll-track");
+  if (track) {
+    track.style.animation = "none";
+    void track.offsetWidth;
+    track.style.animation = "";
+  }
+}
+
+document.getElementById("btn-how-to-play").onclick = openGuideModal;
+document.getElementById("btn-close-guide").onclick = closeGuideModal;
+document.getElementById("btn-play-tutorial").onclick = startTutorial;
+document.getElementById("btn-exit-tutorial").onclick = exitTutorial;
+
+["btn-open-chapter-map", "btn-open-chapter-map-hud", "btn-travel-open-map"].forEach(id => {
+  const button = document.getElementById(id);
+  if (button) button.onclick = openChapterMap;
+});
+["btn-open-endings-map", "btn-open-endings-map-hud", "btn-result-open-endings"].forEach(id => {
+  const button = document.getElementById(id);
+  if (button) button.onclick = openEndingsMap;
+});
+const closeChapterMapButton = document.getElementById("btn-close-chapter-map");
+if (closeChapterMapButton) closeChapterMapButton.onclick = closeChapterMap;
+const closeEndingsMapButton = document.getElementById("btn-close-endings-map");
+if (closeEndingsMapButton) closeEndingsMapButton.onclick = closeEndingsMap;
+const chapterMapModal = document.getElementById("chapter-map-modal");
+if (chapterMapModal) {
+  chapterMapModal.addEventListener("click", event => {
+    if (event.target === chapterMapModal) closeChapterMap();
+  });
+}
+const endingsMapModal = document.getElementById("endings-map-modal");
+if (endingsMapModal) {
+  endingsMapModal.addEventListener("click", event => {
+    if (event.target === endingsMapModal) closeEndingsMap();
+  });
+}
+["btn-open-options", "btn-open-options-hud"].forEach(id => {
+  const button = document.getElementById(id);
+  if (button) button.onclick = openOptionsModal;
+});
+document.getElementById("btn-close-options").onclick = closeOptionsModal;
+document.getElementById("btn-close-options-footer").onclick = closeOptionsModal;
+document.getElementById("btn-options-tutorial").onclick = openGuideModal;
+if (optionsModal) {
+  optionsModal.addEventListener("click", event => {
+    if (event.target === optionsModal) closeOptionsModal();
+  });
+}
+if (guideModal) {
+  guideModal.addEventListener("click", event => {
+    if (event.target === guideModal) closeGuideModal();
+  });
+}
+
+["btn-open-credits", "btn-options-credits"].forEach(id => {
+  const button = document.getElementById(id);
+  if (button) button.onclick = openCreditsModal;
+});
+["btn-close-credits", "btn-close-credits-footer"].forEach(id => {
+  const button = document.getElementById(id);
+  if (button) button.onclick = closeCreditsModal;
+});
+const creditsModal = document.getElementById("credits-modal");
+if (creditsModal) {
+  creditsModal.addEventListener("click", event => {
+    if (event.target === creditsModal) closeCreditsModal();
+  });
+}
+
+const resultCreditsButton = document.getElementById("btn-result-credits");
+if (resultCreditsButton) {
+  resultCreditsButton.onclick = () => openCreditsRoll({
+    reason: Game.lastResultReason || (Game.morality.cruzSacrificed ? "cruz" : "campaign")
+  });
+}
+const creditsRollSkip = document.getElementById("btn-credits-roll-skip");
+if (creditsRollSkip) creditsRollSkip.onclick = closeCreditsRoll;
+const creditsRollModal = document.getElementById("credits-roll-modal");
+if (creditsRollModal) {
+  creditsRollModal.addEventListener("click", event => {
+    if (event.target === creditsRollModal) closeCreditsRoll();
+  });
+}
+
+const briefingBeginButton = document.getElementById("btn-briefing-begin");
+if (briefingBeginButton) briefingBeginButton.onclick = closeChapterBriefing;
+
+const volumeInput = document.getElementById("opt-volume");
+if (volumeInput) {
+  volumeInput.addEventListener("input", () => {
+    gameSettings.volume = Number(volumeInput.value);
+    if (gameSettings.volume > 0) gameSettings.muted = false;
+    const mutedInput = document.getElementById("opt-muted");
+    if (mutedInput) mutedInput.checked = gameSettings.muted;
+    saveGameSettings();
+    applyAudioSettings();
+    updateOptionsLabels();
+  });
+}
+
+const mutedInput = document.getElementById("opt-muted");
+if (mutedInput) {
+  mutedInput.addEventListener("change", () => {
+    gameSettings.muted = mutedInput.checked;
+    saveGameSettings();
+    applyAudioSettings();
+  });
+}
+
+const sensitivityInput = document.getElementById("opt-sensitivity");
+if (sensitivityInput) {
+  sensitivityInput.addEventListener("input", () => {
+    gameSettings.cameraSensitivity = Number(sensitivityInput.value);
+    saveGameSettings();
+    applyCameraSettings();
+    updateOptionsLabels();
+  });
+}
+
+const hintsInput = document.getElementById("opt-hints");
+if (hintsInput) {
+  hintsInput.addEventListener("change", () => {
+    gameSettings.showHints = hintsInput.checked;
+    saveGameSettings();
+    applyInterfaceSettings();
+  });
+}
+
+const qualityInput = document.getElementById("opt-quality");
+if (qualityInput) {
+  qualityInput.addEventListener("change", () => {
+    gameSettings.quality = qualityInput.value;
+    saveGameSettings();
+    applyGraphicsSettings();
+  });
+}
+
+document.getElementById("btn-reset-options").onclick = () => {
+  gameSettings = { ...DEFAULT_SETTINGS };
+  saveGameSettings();
+  syncOptionsUI();
+  applyGameSettings();
 };
 
 document.getElementById("btn-toggle-stats").onclick = () => {
@@ -5020,8 +7027,11 @@ document.getElementById("btn-reset-cam").onclick = () => {
 };
 
 document.getElementById("btn-toggle-sound").onclick = () => {
-  audio.enabled = !audio.enabled;
-  document.getElementById("sound-icon").innerText = audio.enabled ? "🔊" : "🔇";
+  gameSettings.muted = !gameSettings.muted;
+  saveGameSettings();
+  applyAudioSettings();
+  const mutedInput = document.getElementById("opt-muted");
+  if (mutedInput) mutedInput.checked = gameSettings.muted;
 };
 
 document.getElementById("btn-act-move").onclick = () => selectAction("move");
@@ -5049,6 +7059,8 @@ document.getElementById("btn-restart").onclick = () => {
 };
 
 updateContinueButton();
+updateEndingsBadges();
 renderPerks();
 updateHUD();
 updateCameraUI();
+applyGameSettings();

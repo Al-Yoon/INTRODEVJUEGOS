@@ -32,7 +32,7 @@
           <span class="title-rule"></span>
           <span>Una leyenda de la frontera</span>
         </div>
-        <div class="badge-tag">RPG TÁCTICO POR TURNOS &bull; 8 CAPÍTULOS &bull; 6 FINALES</div>
+        <div class="badge-tag">RPG TÁCTICO POR TURNOS &bull; 8 CAPÍTULOS &bull; 8 DESTINOS</div>
         <h1 class="game-main-title">MARTÍN<br><span>FIERRO</span></h1>
         <h2 class="game-sub-title">ENTRE EL FUEGO Y LA PAMPA</h2>
         <div class="flourish-divider">
@@ -51,11 +51,32 @@
             <span class="btn-label">Continuar campaña</span>
             <span class="btn-arrow">›</span>
           </button>
-          <button id="btn-how-to-play" class="btn-gauchesco secondary">
+          <button id="btn-how-to-play" class="btn-gauchesco secondary" title="Aprender a jugar">
             <span class="btn-mark">📜</span>
-            <span class="btn-label">Guía y controles 3D</span>
+            <span class="btn-label">Tutorial básico</span>
             <span class="btn-arrow">›</span>
           </button>
+          <button id="btn-open-options" class="btn-gauchesco secondary" title="Ajustes básicos del juego">
+            <span class="btn-mark">⚙️</span>
+            <span class="btn-label">Opciones</span>
+            <span class="btn-arrow">›</span>
+          </button>
+          <button id="btn-open-credits" class="btn-gauchesco secondary" title="Autores, motor y licencias">
+            <span class="btn-mark">🎬</span>
+            <span class="btn-label">Créditos</span>
+            <span class="btn-arrow">›</span>
+          </button>
+
+          <div class="menu-map-links">
+            <button id="btn-open-chapter-map" class="btn-gauchesco secondary menu-map-btn" title="Ver en qué zona de Argentina ocurre cada capítulo">
+              <span class="btn-mark">🗺️</span>
+              <span class="btn-label">Mapa de la travesía</span>
+            </button>
+            <button id="btn-open-endings-map" class="btn-gauchesco secondary menu-map-btn" title="Ver los finales que obtuviste y los que te faltan">
+              <span class="btn-mark">🏁</span>
+              <span class="btn-label">Finales <b id="menu-endings-count">0/8</b></span>
+            </button>
+          </div>
         </div>
 
         <div class="title-meta">
@@ -83,6 +104,21 @@
       <div id="unit-overlays" aria-hidden="true"></div>
       <div id="damage-layer" aria-hidden="true"></div>
       <div id="toast-container" aria-live="polite"></div>
+
+      <!-- GUÍA DEL TUTORIAL JUGABLE -->
+      <aside id="tutorial-overlay" class="hidden" aria-live="polite">
+        <div class="tutorial-card">
+          <div class="tutorial-topline">
+            <span id="tutorial-step-badge">TUTORIAL</span>
+            <button id="btn-exit-tutorial" class="tutorial-exit" title="Salir del tutorial">Salir</button>
+          </div>
+          <h3 id="tutorial-title">La primera lección</h3>
+          <p id="tutorial-text"></p>
+          <p id="tutorial-hint" class="tutorial-hint"></p>
+          <button id="btn-tutorial-continue" class="btn-gauchesco primary hidden">Continuar</button>
+          <div class="tutorial-progress" aria-hidden="true"><span id="tutorial-progress-fill"></span></div>
+        </div>
+      </aside>
 
       <!-- Tarjeta cinematográfica de capítulo -->
       <div id="chapter-card" class="hidden">
@@ -137,6 +173,15 @@
                 <span class="loyalty-label">Lealtad:</span>
                 <span class="loyalty-val" id="cruz-loyalty-text">Hermandad (85%)</span>
               </div>
+              <div class="loyalty-row remorse-row" id="cruz-remorse-row" title="Remordimiento: crece con cada muerte y cada decisión dura. Si Cruz cae, la travesía termina.">
+                <span class="loyalty-icon">🖤</span>
+                <span class="loyalty-label">Remordimiento:</span>
+                <span class="loyalty-val" id="cruz-remorse-text">0%</span>
+              </div>
+              <button class="follow-toggle following" id="cruz-follow-toggle" type="button" aria-pressed="true" aria-label="Alternar seguimiento de Cruz" title="Cruz te sigue al caminar. Click para que mantenga la posición.">
+                <span class="follow-icon" id="cruz-follow-icon">🐾</span>
+                <span class="follow-label" id="cruz-follow-label">Sigue a Fierro</span>
+              </button>
               <div class="status-chips" id="cruz-status"></div>
             </div>
           </div>
@@ -178,6 +223,12 @@
             <span class="res-icon">🩹</span>
             <span id="res-bandage">2</span>
           </div>
+          <button id="btn-open-chapter-map-hud" class="btn-icon" title="Mapa de la travesía: dónde ocurre cada capítulo">
+            <span class="res-icon">🗺️</span>
+          </button>
+          <button id="btn-open-endings-map-hud" class="btn-icon" title="Mapa de finales: obtenidos y pendientes">
+            <span class="res-icon">🏁</span>
+          </button>
           <button id="btn-toggle-stats" class="btn-icon" title="Ver Atributos de Fierro">
             <span class="res-icon">📊</span>
           </button>
@@ -190,6 +241,9 @@
           </button>
           <button id="btn-toggle-sound" class="btn-icon" title="Sonido">
             <span id="sound-icon">🔊</span>
+          </button>
+          <button id="btn-open-options-hud" class="btn-icon" title="Opciones básicas">
+            <span class="res-icon">⚙️</span>
           </button>
         </div>
       </header>
@@ -405,48 +459,73 @@
         </div>
       </div>
 
-      <!-- MODAL DE AYUDA / GUÍA -->
+      <!-- MODAL DE TUTORIAL BÁSICO (game.js lo mueve a #app para abrirlo desde el menú) -->
       <div id="guide-modal" class="modal-overlay hidden">
         <div class="modal-panel guide-panel">
           <div class="panel-header">
-            <h3>Guía Táctica 3D: Entre el Fuego y la Pampa</h3>
+            <h3>Tutorial Básico: Cómo jugar</h3>
             <button id="btn-close-guide" class="btn-close">&times;</button>
           </div>
           <div class="guide-content">
-            <h4>1. Controles y Navegación 3D</h4>
+            <div class="guide-play-banner">
+              <div class="guide-play-copy">
+                <strong>¿Querés aprender jugando?</strong>
+                <span>Una lección corta y guiada: moverte, tirar el D20 y pelear por turnos. No modifica tu campaña guardada.</span>
+              </div>
+              <button id="btn-play-tutorial" class="btn-gauchesco primary">
+                <span class="icon">🎓</span> Jugar tutorial
+              </button>
+            </div>
+
+            <p>Bienvenido a la frontera. <strong>Martín Fierro: Entre el Fuego y la Pampa</strong> es un RPG táctico por turnos: recorrés ocho capítulos, conversás, tomás decisiones y peleás combates en 3D. No hay una sola forma de ganar.</p>
+
+            <h4>1. El ciclo de juego</h4>
             <ul>
-              <li><strong>Click Izquierdo:</strong> Mover a Fierro a la celda 3D o seleccionar objetivo/enemigo para atacar.</li>
-              <li><strong>Click Derecho + Arrastrar:</strong> Orbitar la cámara 3D alrededor del escenario para ver detrás de carretas y paredes.</li>
-              <li><strong>Rueda del Mouse:</strong> Zoom de cámara táctica.</li>
-              <li><strong>Botón 🎥:</strong> Restablecer la vista isométrica predeterminada.</li>
-            </ul>
-            
-            <h4>2. Combate Táctico por Turnos en 3D</h4>
-            <ul>
-              <li><strong>Puntos de Acción (AP):</strong> Cada turno dispones de 4 AP para moverte, golpear con facón o disparar.</li>
-              <li><strong>Iniciativa:</strong> La barra superior muestra el orden de turnos. La Agilidad define quién actúa primero.</li>
-              <li><strong>Coberturas y línea de tiro:</strong> Las carretas y rocas dan cobertura parcial. Los edificios, ombúes y empalizadas bloquean la línea de visión: buscá un ángulo distinto.</li>
-              <li><strong>Flanqueo:</strong> Atacar cuerpo a cuerpo a un enemigo que ya está trabado con Cruz suma daño. El facón también puede dar golpes críticos.</li>
-              <li><strong>Estados:</strong> Fuego, sangrado, marcado, desmoralizado y aturdido alteran el combate. Los iconos aparecen sobre cada personaje.</li>
-              <li><strong>Nuevas acciones:</strong> <strong>Vigilar</strong> prepara un disparo de reacción; <strong>Payada</strong> marca y debilita a un enemigo; <strong>Vendaje</strong> cura sin gastar ginebra.</li>
-              <li><strong>Entorno interactivo:</strong> Hacé click en barriles de pólvora, cajones, aljibes y fogones. Los barriles explotan, los cajones dan botín y los fogones pueden prenderse.</li>
-              <li><strong>Compañero (Sargento Cruz):</strong> Actúa con iniciativa propia apoyándote con su facón.</li>
+              <li><strong>Exploración:</strong> hacé click en el suelo para mover al personaje seleccionado. Podés controlar a Fierro o a Cruz haciendo click en sus retratos (o con <strong>Tab</strong>), para ubicarlos tácticamente antes de una pelea. Cruz sigue a Fierro por defecto; el botón <strong>Sigue a Fierro / Mantener posición</strong> de su ficha cambia ese comportamiento. Hacé click sobre personajes, animales u objetos para hablar, investigar o interactuar. Algunos objetos solo se pueden usar cuando estás cerca.</li>
+              <li><strong>Diálogos y decisiones:</strong> las conversaciones ofrecen distintas respuestas. Algunas son normales y otras dependen de un atributo: por ejemplo, <em>[CARISMA (CD 15)]</em>. Lo que elegís cambia la historia, la lealtad de Cruz y el final que te espera.</li>
+              <li><strong>Combate:</strong> cuando empieza una pelea, el juego pasa a turnos tácticos por iniciativa. Movés a Fierro y a Cruz, atacás y usás habilidades gastando Puntos de Acción (AP).</li>
+              <li><strong>Viaje y progreso:</strong> al cerrar un capítulo se abre el mapa de la pampa. Ahí subís de nivel, mejorás armas y seguís viaje. La partida se guarda automáticamente al terminar cada capítulo.</li>
             </ul>
 
-            <h4>3. Campaña, objetivos y progresión</h4>
+            <h4>2. La mecánica del dado (D20)</h4>
+            <p>Cuando una acción depende de la habilidad de Fierro, el juego tira un <strong>dado de 20 caras (D20)</strong> y le suma el modificador del atributo correspondiente. El resultado se compara con una <strong>dificultad o CD</strong> (Clase de Dificultad):</p>
+            <p class="tutorial-formula"><strong>Tirada del D20 + modificador del atributo ≥ CD → ÉXITO</strong></p>
             <ul>
-              <li>La campaña tiene <strong>8 capítulos</strong> con objetivos distintos: eliminar, resistir oleadas, investigar un pueblo y derrotar jefes de varias fases.</li>
-              <li>Cada nivel te da <strong>puntos de atributo</strong> y <strong>puntos de pericia</strong>. Las pericias se eligen en la ficha (📊).</li>
-              <li>Las decisiones morales, la lealtad de Cruz y los capítulos resueltos en paz desbloquean <strong>6 finales alternativos</strong>.</li>
-              <li>La partida se guarda automáticamente al terminar cada capítulo. Podés continuar desde el menú principal.</li>
+              <li><strong>Modificador:</strong> se calcula con el atributo: <strong>(valor − 10) ÷ 2</strong>, redondeando hacia abajo. Un atributo 10–11 da +0; 12–13 da +1; 14–15 da +2; 8–9 da −1.</li>
+              <li><strong>Dificultad (CD):</strong> cuanto más alta, más difícil. Una CD 10 es sencilla; una CD 15 exige una buena tirada o un atributo alto.</li>
+              <li><strong>Resultado:</strong> si el total iguala o supera la CD, tenés éxito. Un <strong>20 natural</strong> siempre es éxito, sin importar la CD.</li>
+              <li><strong>¿Dónde se usa?</strong> El D20 se reserva para chequeos narrativos y para la Payada. El combate común no tira D20: el facón acierta si estás en rango y el trabuco usa la probabilidad de impacto que ves al apuntar.</li>
+              <li><strong>En pantalla:</strong> el dado muestra la tirada, el modificador, el total y la CD. Un fallo no termina la partida: abre una consecuencia distinta, a veces peor y a veces simplemente inesperada.</li>
+              <li><strong>Ejemplo:</strong> Fierro tiene Carisma 15 (+2) y necesita superar CD 12. Saca 11 en el D20: 11 + 2 = 13. Como 13 ≥ 12, el chequeo es un éxito.</li>
+            </ul>
+            <p class="tutorial-example">La <strong>Payada</strong> en combate también usa el D20: tirada + modificador de Carisma contra CD 13. Si acierta, el enemigo queda marcado y desmoralizado durante dos turnos.</p>
+
+            <h4>3. Combate táctico por turnos</h4>
+            <ul>
+              <li><strong>Iniciativa:</strong> la barra superior muestra el orden de turnos. La Agilidad decide quién actúa primero; Cruz pelea con iniciativa propia.</li>
+              <li><strong>Puntos de Acción (AP):</strong> en tu turno tenés <strong>4 AP</strong>. Mover cuesta <strong>1 AP</strong>, Facón <strong>2</strong>, Trabuco <strong>2</strong>, Boleadoras <strong>2</strong>, y Poncho, Ginebra, Vigilar, Payada y Vendaje <strong>1 AP</strong>. Cuando se acaban, usá <strong>PASAR TURNO [Espacio]</strong>.</li>
+              <li><strong>Facón:</strong> ataque cuerpo a cuerpo que siempre conecta si estás en rango. Puede dar golpes críticos y hace más daño si el enemigo ya está trabado con Cruz (<strong>flanqueo</strong>).</li>
+              <li><strong>Trabuco:</strong> ataque a distancia que consume munición. Al pasar el mouse sobre un enemigo ves la probabilidad de impacto; las coberturas parciales la reducen y las totales bloquean la línea de tiro. Buscá otro ángulo.</li>
+              <li><strong>Cobertura y entorno:</strong> carretas y rocas dan cobertura parcial; adobes, ombúes y empalizadas bloquean la vista. Los barriles de pólvora explotan y dañan a todos, incluso a vos y a Cruz. Los cajones dan munición, ginebra y metal.</li>
+              <li><strong>Estados:</strong> ardiendo y sangrando quitan vida por ronda; marcado aumenta la chance de ser impactado; desmoralizado reduce el daño; aturdido hace perder el turno; expuesto anula la cobertura.</li>
+              <li><strong>Habilidades:</strong> <strong>Poncho</strong> sube tu evasión y reduce el daño recibido; <strong>Boleadoras</strong> inmoviliza y expone; <strong>Vigilar</strong> prepara un disparo de reacción; <strong>Payada</strong> marca y desmoraliza; <strong>Ginebra</strong> y <strong>Vendaje</strong> curan.</li>
             </ul>
 
-            <h4>4. Consejos de frontera</h4>
+            <h4>4. Progresión y finales</h4>
             <ul>
-              <li>Usá <strong>Vigilar</strong> antes de retroceder: los enemigos que avancen recibirán un disparo gratis.</li>
-              <li>La <strong>Payada</strong> es un chequeo de Carisma. Si acierta, el enemigo queda marcado y pega menos durante dos turnos.</li>
-              <li>Los enemigos usan IA por arquetipo: fusileros buscan distancia, lanceros cargan y los jefes arengan a su tropa.</li>
-              <li>Completá las misiones secundarias (payada, testimonios, rescate de Picardía) para acceder a los mejores finales.</li>
+              <li>Ganás experiencia al derrotar enemigos y completar objetivos. Al subir de nivel elegís <strong>un atributo</strong> y <strong>una pericia</strong> en la ficha (📊).</li>
+              <li>La <strong>Fuerza</strong> mejora el daño del facón; la <strong>Resistencia</strong> te da más salud máxima; el <strong>Carisma</strong> abre diálogos y payadas; la <strong>Supervivencia</strong> mejora las curaciones. La <strong>Agilidad</strong> y la <strong>Percepción</strong> influyen en iniciativa y puntería.</li>
+              <li>Con las <strong>piezas de metal</strong> podés reforzar el facón o el trabuco en el mapa de viaje. Cada rango suma +6 de daño.</li>
+              <li>Los objetivos varían: eliminar enemigos, resistir rondas, reunir testimonios o derrotar jefes. Las decisiones morales y la lealtad de Cruz desbloquean <strong>8 destinos distintos</strong> (6 finales y 2 derrotas).</li>
+            </ul>
+
+            <h4>5. Controles</h4>
+            <ul>
+              <li><strong>Click izquierdo:</strong> mover a Fierro, seleccionar una acción o atacar a un enemigo.</li>
+              <li><strong>Click derecho + arrastrar:</strong> orbitar la cámara. <strong>Rueda:</strong> zoom.</li>
+              <li><strong>Q:</strong> cambiar cámara (táctica / tercera persona / primera persona). <strong>R:</strong> recentrar la vista.</li>
+              <li><strong>Atajos de acción:</strong> 1/M Mover · 2/F Facón · 3/T Trabuco · 4/G Poncho · 5/B Boleadoras · 6/H Ginebra · 7/V Vigilar · 8/P Payada · 9/C Vendaje.</li>
+              <li><strong>Espacio:</strong> pasar turno durante el combate.</li>
             </ul>
           </div>
         </div>
@@ -542,9 +621,62 @@
           </div>
 
           <div class="travel-actions">
+            <button id="btn-travel-open-map" class="btn-gauchesco secondary">
+              <span class="icon">🗺️</span> VER MAPA DE ARGENTINA
+            </button>
             <button id="btn-travel-next" class="btn-gauchesco primary">
               <span class="icon">🐎</span> ENSILAR Y MARCHAR AL SIGUIENTE CAPÍTULO
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BRIEFING DE CAPÍTULO: SITUACIÓN, OBJETIVO Y AMENAZAS -->
+      <div id="chapter-briefing-modal" class="modal-overlay hidden">
+        <div class="modal-panel chapter-briefing-panel">
+          <div class="briefing-head">
+            <span class="briefing-kicker" id="briefing-kicker">CAPÍTULO I</span>
+            <h2 id="briefing-title">La Pulpería 'La Colorada'</h2>
+            <p class="briefing-subtitle" id="briefing-subtitle">Donde la pampa y la ley se miran de reojo.</p>
+          </div>
+          <div class="briefing-body">
+            <section class="briefing-block">
+              <h4>La situación</h4>
+              <p id="briefing-context"></p>
+            </section>
+            <section class="briefing-block briefing-objective">
+              <h4>Objetivo del capítulo</h4>
+              <p id="briefing-objective">Derrotar o disuadir a la partida militar</p>
+              <span class="briefing-type" id="briefing-type">COMBATE TÁCTICO</span>
+            </section>
+            <section class="briefing-block">
+              <h4>En el terreno</h4>
+              <ul id="briefing-enemies" class="briefing-list"></ul>
+              <p id="briefing-waves" class="briefing-waves hidden"></p>
+              <p id="briefing-npcs" class="briefing-npcs"></p>
+            </section>
+            <section class="briefing-block briefing-hint" id="briefing-hint-wrap">
+              <h4>Consejo de baquiano</h4>
+              <p id="briefing-hint"></p>
+            </section>
+          </div>
+          <div class="briefing-actions">
+            <button id="btn-briefing-begin" class="btn-gauchesco primary">Comenzar el capítulo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANTALLA DE VICTORIA DE CAPÍTULO -->
+      <div id="chapter-victory-modal" class="modal-overlay hidden">
+        <div class="modal-panel chapter-victory-panel">
+          <span class="victory-kicker" id="victory-kicker">CAPÍTULO I COMPLETADO</span>
+          <h2 id="victory-title">EL CAMINO SIGUE</h2>
+          <p class="victory-subtitle" id="victory-subtitle"></p>
+          <div class="flourish-divider"><span>❖</span></div>
+          <p class="victory-verse" id="victory-verse"></p>
+          <div class="epilogue-stats-grid" id="victory-stats"></div>
+          <div class="menu-actions victory-actions">
+            <button id="btn-victory-continue" class="btn-gauchesco primary">Ensillar y seguir</button>
           </div>
         </div>
       </div>
@@ -555,19 +687,234 @@
           <div class="badge-tag" id="epilogue-ending-tag">FINAL ALTERNATIVO 1 DE 6</div>
           <h2 id="result-title">LA PAMPA NO PERDONA</h2>
           <div class="flourish-divider"><span>❖</span></div>
-          <blockquote class="poetic-verse" id="result-verse">
-            «Aquí me pongo a cantar, / al compás de la vigüela...»
-          </blockquote>
+          <p id="result-verse" class="result-verse"></p>
           <p id="result-narrative">El destino de Fierro en la frontera ha quedado sellado.</p>
           
           <div class="epilogue-stats-grid" id="result-summary"></div>
           
           <div class="menu-actions">
+            <button id="btn-result-credits" class="btn-gauchesco credits-cta">🎬 VER LOS CRÉDITOS</button>
+            <button id="btn-result-open-endings" class="btn-gauchesco secondary">🏁 VER MAPA DE FINALES</button>
             <button id="btn-restart" class="btn-gauchesco primary">JUGAR DE NUEVO (EXPLORAR OTRO FINAL)</button>
           </div>
         </div>
       </div>
     </main>
+
+    <!-- MODAL DE OPCIONES BÁSICAS -->
+    <div id="options-modal" class="modal-overlay hidden">
+      <div class="modal-panel options-panel">
+        <div class="panel-header">
+          <h3>Opciones básicas</h3>
+          <button id="btn-close-options" class="btn-close">&times;</button>
+        </div>
+        <div class="options-content">
+          <section class="options-group" aria-labelledby="options-audio-title">
+            <h4 id="options-audio-title">Audio</h4>
+            <label class="option-row" for="opt-volume">
+              <span>Volumen general</span>
+              <input type="range" id="opt-volume" min="0" max="100" step="5" value="80">
+              <span class="option-value" id="opt-volume-value">80%</span>
+            </label>
+            <label class="option-row option-check" for="opt-muted">
+              <span>Silenciar todo el sonido</span>
+              <input type="checkbox" id="opt-muted">
+            </label>
+          </section>
+
+          <section class="options-group" aria-labelledby="options-camera-title">
+            <h4 id="options-camera-title">Cámara e interfaz</h4>
+            <label class="option-row" for="opt-sensitivity">
+              <span>Sensibilidad de cámara</span>
+              <input type="range" id="opt-sensitivity" min="50" max="200" step="10" value="100">
+              <span class="option-value" id="opt-sensitivity-value">100%</span>
+            </label>
+            <label class="option-row option-check" for="opt-hints">
+              <span>Mostrar ayuda de controles</span>
+              <input type="checkbox" id="opt-hints" checked>
+            </label>
+          </section>
+
+          <section class="options-group" aria-labelledby="options-graphics-title">
+            <h4 id="options-graphics-title">Calidad gráfica</h4>
+            <label class="option-row" for="opt-quality">
+              <span>Resolución 3D</span>
+              <select id="opt-quality">
+                <option value="high" selected>Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
+              </select>
+            </label>
+            <p class="option-help">Bajá la resolución si el juego se siente lento. Los cambios se aplican al instante.</p>
+          </section>
+
+          <div class="options-actions">
+            <button id="btn-options-tutorial" class="btn-gauchesco secondary">Ver tutorial</button>
+            <button id="btn-options-credits" class="btn-gauchesco secondary">Créditos</button>
+            <button id="btn-reset-options" class="btn-gauchesco secondary">Restablecer</button>
+            <button id="btn-close-options-footer" class="btn-gauchesco primary">Listo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DE CRÉDITOS -->
+    <div id="credits-modal" class="modal-overlay hidden">
+      <div class="modal-panel credits-panel">
+        <div class="panel-header">
+          <h3>Créditos</h3>
+          <button id="btn-close-credits" class="btn-close" aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="credits-lead">Una travesía por la pampa de 1872, tejida sobre los versos de José Hernández.</p>
+
+        <div class="credits-grid">
+          <section class="credits-group">
+            <h4>Obra original</h4>
+            <p><strong>Martín Fierro</strong><span>José Hernández · 1872</span></p>
+            <p><strong>Concepto original</strong><span>López Galarza, Domicolo &amp; Yoon</span></p>
+          </section>
+
+          <section class="credits-group">
+            <h4>Adaptación interactiva 3D</h4>
+            <p><strong>Diseño, narrativa y sistemas tácticos</strong><span>Equipo de «Martín Fierro: Entre el Fuego y la Pampa» · 2026</span></p>
+            <p><strong>Dirección de arte</strong><span>Estética fierropampa: papel, tinta, rojo y oro</span></p>
+          </section>
+
+          <section class="credits-group">
+            <h4>Motor y tecnología</h4>
+            <p><strong>Three.js</strong><span>Licencia MIT · OrbitControls, GLTFLoader y SkeletonUtils de los ejemplos oficiales</span></p>
+            <p><strong>Modelos 3D GLB</strong><span>Fierro, Cruz y la guardia de frontera</span></p>
+          </section>
+
+          <section class="credits-group">
+            <h4>Tipografía y arte</h4>
+            <p><strong>Manus CC0</strong><span>Tipografía libre con licencia CC0, incluida en el proyecto</span></p>
+            <p><strong>Panoramas de capítulo</strong><span>Ocho estampas de la pampa bonaerense</span></p>
+          </section>
+        </div>
+
+        <blockquote class="credits-verse">«Aquí me pongo a cantar, / al compás de la vigüela...»</blockquote>
+
+        <div class="credits-actions">
+          <button id="btn-close-credits-footer" class="btn-gauchesco primary">Volver</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROLLO DE CRÉDITOS FINALES (MUERTE O CIERRE DE CAMPAÑA) -->
+    <div id="credits-roll-modal" class="modal-overlay hidden credits-roll-overlay">
+      <div class="credits-roll-stage">
+        <div class="credits-roll-track" id="credits-roll-track"></div>
+      </div>
+      <div class="credits-roll-actions">
+        <button id="btn-credits-roll-skip" class="btn-gauchesco primary">Saltar créditos</button>
+      </div>
+    </div>
+
+    <!-- MAPA GEOGRÁFICO DE LA TRAVESÍA -->
+    <div id="chapter-map-modal" class="modal-overlay hidden">
+      <div class="modal-panel chapter-map-panel">
+        <div class="panel-header chapter-map-header">
+          <div class="chapter-map-heading">
+            <span class="badge-tag">CARTOGRAFÍA DE LA FRONTERA · ARGENTINA 1872</span>
+            <h3>¿Dónde ocurre cada capítulo?</h3>
+          </div>
+          <button id="btn-close-chapter-map" class="btn-close" aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="chapter-map-lead">
+          La travesía de Fierro no recorre todo el país: se hunde en la
+          <strong>frontera sur de la provincia de Buenos Aires</strong>, la pampa donde la ley, el
+          fortín y el desierto se disputaban cada legua. Elegí un punto del mapa para conocer su zona.
+        </p>
+
+        <div class="chapter-map-layout">
+          <div class="argentina-map-card">
+            <div class="map-card-title">Argentina · zona de la historia</div>
+            <svg class="argentina-map" viewBox="0 0 300 560" role="img" aria-label="Mapa de Argentina con la pampa bonaerense destacada">
+              <defs>
+                <linearGradient id="argLandGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#ecdcc0" />
+                  <stop offset="58%" stop-color="#d8c09a" />
+                  <stop offset="100%" stop-color="#b99a72" />
+                </linearGradient>
+                <radialGradient id="argPampaGlow">
+                  <stop offset="0%" stop-color="#c0392b" stop-opacity="0.8" />
+                  <stop offset="100%" stop-color="#c0392b" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+              <path class="arg-tierra" d="M 95 40 L 125 28 L 150 40 L 175 30 L 200 50 L 218 75 L 210 105 L 195 120 L 190 160 L 205 200 L 220 235 L 205 270 L 195 300 L 185 345 L 172 390 L 160 435 L 150 470 L 142 505 L 130 530 L 118 520 L 108 485 L 100 445 L 88 405 L 78 365 L 68 325 L 60 285 L 52 245 L 50 205 L 60 175 L 58 145 L 50 115 L 55 85 L 70 60 L 85 48 Z" />
+              <path class="arg-fuego" d="M 128 540 L 150 531 L 153 546 L 137 556 Z" />
+              <path class="arg-andes" d="M 83 52 C 72 100, 62 160, 55 215 C 49 268, 55 315, 68 355 C 76 380, 85 410, 96 440" />
+              <circle class="arg-pampa-glow" cx="195" cy="245" r="48" fill="url(#argPampaGlow)" />
+              <path class="arg-pampa" d="M 164 218 L 206 212 L 223 235 L 214 266 L 190 282 L 164 266 L 156 240 Z" />
+              <circle class="arg-pulse" cx="195" cy="245" r="14" />
+              <circle class="arg-marker" cx="195" cy="245" r="5" />
+              <line class="arg-leader" x1="204" y1="241" x2="230" y2="216" />
+              <text class="arg-map-label" x="234" y="212" text-anchor="start">PAMPA</text>
+              <text class="arg-map-label small" x="234" y="224" text-anchor="start">BONAERENSE</text>
+              <text class="arg-map-name" x="150" y="548" text-anchor="middle">ARGENTINA</text>
+            </svg>
+            <div class="argentina-map-caption">
+              <span class="map-caption-dot"></span>
+              <span><strong>Pampa bonaerense</strong><small>Frontera sur · siglo XIX</small></span>
+            </div>
+          </div>
+
+          <div class="frontier-map-card">
+            <div class="map-card-title">
+              Detalle de la travesía
+              <span id="chapter-map-progress">0 / 8</span>
+            </div>
+            <div id="frontier-map" class="frontier-map">
+              <svg class="frontier-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <polyline id="frontier-route-line" points=""></polyline>
+              </svg>
+              <span class="frontier-geo-label river">Río Salado</span>
+              <span class="frontier-geo-label coast">Costa atlántica</span>
+              <span class="frontier-geo-label sierras">Sierras del sur</span>
+              <div id="frontier-nodes" class="frontier-nodes"></div>
+            </div>
+            <div id="chapter-map-info" class="chapter-map-info" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="chapter-map-legend">
+          <span><i class="legend-dot completed"></i> Completado</span>
+          <span><i class="legend-dot current"></i> Capítulo actual</span>
+          <span><i class="legend-dot locked"></i> Por recorrer</span>
+          <span class="chapter-map-note">Los 8 capítulos transcurren en la pampa bonaerense.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAPA / ATLAS DE FINALES DESCUBIERTOS -->
+    <div id="endings-map-modal" class="modal-overlay hidden">
+      <div class="modal-panel endings-map-panel">
+        <div class="panel-header chapter-map-header">
+          <div class="chapter-map-heading">
+            <span class="badge-tag">ATLAS DE DESTINOS · 8 RUTAS</span>
+            <h3>Mapa de finales</h3>
+          </div>
+          <button id="btn-close-endings-map" class="btn-close" aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="endings-map-lead">
+          Cada final es una huella distinta en la pampa. Este mapa recuerda las rutas que ya recorriste
+          y las que todavía te esperan. <strong id="endings-map-count">0 de 8 descubiertos</strong>
+        </p>
+        <div class="endings-progress" aria-hidden="true"><span id="endings-progress-fill"></span></div>
+        <div id="endings-map-trail" class="endings-map-trail"></div>
+        <p id="endings-map-summary" class="endings-map-summary"></p>
+        <div id="endings-map-cards" class="endings-map-cards"></div>
+        <section class="endings-history" id="endings-history" aria-labelledby="endings-history-title">
+          <h4 id="endings-history-title">Bitácora de rutas</h4>
+          <p class="endings-history-hint">Cada travesía queda anotada acá, con su desenlace, el capítulo alcanzado y el remordimiento con el que se cerró.</p>
+          <ol id="endings-history-list" class="endings-history-list"></ol>
+        </section>
+        <div class="endings-map-footer">
+          Los finales quedan registrados incluso cuando empezás una nueva travesía.
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="game.js"></script>
